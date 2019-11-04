@@ -27,15 +27,48 @@ namespace LetMeRaid
 
         [DllImport("user32.dll")]
         private static extern void mouse_event(int dwFlags, int dx, int dy, int dwData, int dwExtraInfo);
-
-
-        public static Bitmap getScreen()
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        static extern bool GetClientRect(IntPtr hWnd, ref RECT lpRect);
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        static extern bool GetWindowRect(IntPtr hWnd, ref RECT lpRect);
+        [StructLayout(LayoutKind.Sequential)]
+        public struct RECT
         {
-            Bitmap baseImage = new Bitmap(Screen.PrimaryScreen.Bounds.Width, Screen.PrimaryScreen.Bounds.Height);
+            public int Left; 
+            public int Top; 
+            public int Right; 
+            public int Bottom;
+        }
+
+        [DllImport("user32")]
+        public static extern int GetSystemMetrics(int nIndex);
+        [DllImport("user32", EntryPoint = "HideCaret")]
+        private static extern bool HideCaret(IntPtr hWnd);
+        private static Point getClientStart(ref RECT cRect, ref RECT wRect) {
+            Point start = new Point(wRect.Left, wRect.Top);
+            if (wRect.Bottom - wRect.Top != cRect.Bottom)
+            {
+                // 非全屏                
+                int titleHeight = GetSystemMetrics(4);
+                int borderWidth = (wRect.Right - wRect.Left - cRect.Right) / 2;
+                start.X = start.X + borderWidth;
+                start.Y = start.Y + titleHeight + borderWidth;
+            }
+            return start;
+        }
+        public static Bitmap getScreenshot(ref RECT cRect, ref RECT wRect)
+        {
+           
+            Size capSize = new Size(cRect.Right - cRect.Left, cRect.Bottom - cRect.Top);
+            Point capStart = getClientStart(ref cRect, ref wRect);
+            Bitmap baseImage = new Bitmap(capSize.Width, capSize.Height);
             Graphics g = Graphics.FromImage(baseImage);
-            g.CopyFromScreen(new Point(0, 0), new Point(0, 0), Screen.AllScreens[0].Bounds.Size);
+            g.CopyFromScreen(capStart, new Point(0, 0), capSize);
             g.Dispose();
-            return baseImage;
+
+            return baseImage;           
         }
 
         public MainWindow()
@@ -56,7 +89,7 @@ namespace LetMeRaid
             DateTime dt = DateTime.Now;
             bool inTimeRange = dt.TimeOfDay.TotalMinutes >= (double)(this.numericUpDown1.Value * 60 + this.numericUpDown2.Value);
 
-            if (!inTimeRange) {
+            if (!inTimeRange && false) {
                 return;
             }
 
@@ -68,23 +101,22 @@ namespace LetMeRaid
             }
             if (psStatus[1])
             {
+                if (!this.enableAutoRestart) {
+                    return;
+                }
                 int status = this.getWowStatus();
 
-                if (status == -1 && this.enableAutoRestart) {                    
-                    this.BeginInvoke(new deleAppendLog(appendLog), "检测到掉线，关闭魔兽世界");
+                if (status == -1) {                    
+                    this.BeginInvoke(new deleAppendLog(appendLog), "掉线，关闭魔兽世界");
                     this.killWow();
                 } else if (status == 1) {
-                    this.BeginInvoke(new deleAppendLog(appendLog), "检测到人物选择界面，选择人物");
-                    Thread thread = new Thread(new ThreadStart(enterGame));
-                    thread.IsBackground = true;
-                    thread.Start();
+                    this.BeginInvoke(new deleAppendLog(appendLog), "人物选择界面，选择人物");
+                    this.enterGame();                    
                 }
             }
             else {
                 this.BeginInvoke(new deleAppendLog(appendLog), "启动魔兽世界");
-                Thread thread = new Thread(new ThreadStart(launchWow));
-                thread.IsBackground = true;
-                thread.Start();
+                this.launchWow();
             }
         }
 
@@ -99,26 +131,22 @@ namespace LetMeRaid
             return (c1.R - c2.R) * (c1.R - c2.R) + (c1.G - c2.G) * (c1.G - c2.G) + (c1.B - c2.B) * (c1.B - c2.B);
         }
 
-        private long getDeltaE(LockBitmap lockbmp, int[,] pts) {
+        private int countMatchedPixels(LockBitmap lockbmp, int[,] pts) {
 
             Color st = Color.FromArgb(123, 9, 6);
-            long e = 0;
+            int ret = 0;
 
             int width = lockbmp.Width;
             int height = lockbmp.Height;
-
-            for (int i = 0; i < 2; i++) {
+    
+            for (int i = 0; i < pts.Length / 2; i++) {
                 int ptx = pts[i,0] * width / 2560;
                 int pty = pts[i,1] * height / 1440;
-                if (e > 1000000) {
-                    break;
-                }
-                for (int j = -2; j < 3; j++) {
-                    e += calColorErr(st, lockbmp.GetPixel(ptx + j, pty + j));
+                if (calColorErr(st, lockbmp.GetPixel(ptx, pty)) < 500) {                   
+                    ret += 1;
                 }
             }
-
-            return e;
+            return ret;
         }
         private int getWowStatus() {
             int[,] loginPts = {
@@ -151,20 +179,28 @@ namespace LetMeRaid
                 { 2462, 1358 }
             };
 
-            if (this.activateWindow("魔兽世界"))
-            {
-               Bitmap bmp = getScreen();
-               LockBitmap lockbmp = new LockBitmap(bmp);
-               lockbmp.LockBits();
+            IntPtr findPtr = this.activateWindow("魔兽世界");
 
-               if (getDeltaE(lockbmp, loginPts) < 10000)
-               {
-                   return -1;
-               }
-               if (getDeltaE(lockbmp, choosePts) < 10000)
-               {
-                   return 1;
-               }
+            if (findPtr.ToInt32() != 0)
+            {
+                RECT cRect = new RECT();
+                RECT wRect = new RECT();
+
+                GetWindowRect(findPtr, ref wRect);
+                GetClientRect(findPtr, ref cRect);
+
+                Bitmap bmp = getScreenshot(ref cRect, ref wRect);
+                LockBitmap lockbmp = new LockBitmap(bmp);
+                lockbmp.LockBits();
+
+                if (countMatchedPixels(lockbmp, loginPts) >= 10)
+                {
+                    return -1;
+                }
+                if (countMatchedPixels(lockbmp, choosePts) >= 10)
+                {
+                    return 1;
+                }
             }
             else
             {
@@ -193,30 +229,36 @@ namespace LetMeRaid
         }
 
         private void enterGame() {
-            int cx = Screen.PrimaryScreen.Bounds.Width / 2;
-            int cy = Screen.PrimaryScreen.Bounds.Height * 1320 / 1440;
-            SetCursorPos(cx, cy);
-            mouse_event(0x0002, 0, 0, 0, 0); 
-            Thread.Sleep(55);
-            mouse_event(0x0004, 0, 0, 0, 0); 
-            Thread.CurrentThread.Abort();
+            IntPtr findPtr = FindWindow(null, "魔兽世界");
+            if (findPtr.ToInt32() != 0) {
+                RECT cRect = new RECT();
+                RECT wRect = new RECT();
+                GetClientRect(findPtr, ref cRect);
+                GetWindowRect(findPtr, ref wRect);
+
+                Point startPos = getClientStart(ref cRect, ref wRect);
+
+                int cx = startPos.X + cRect.Right / 2;
+                int cy = startPos.Y + cRect.Bottom * 1320 / 1440;
+                SetCursorPos(cx, cy);
+                mouse_event(0x0002, 0, 0, 0, 0);
+                Thread.Sleep(90);
+                mouse_event(0x0004, 0, 0, 0, 0);
+            }
         }
 
-        private bool activateWindow(string title) {
+        private IntPtr activateWindow(string title) {
             IntPtr findPtr = FindWindow(null, title);
 
             if (findPtr.ToInt32() != 0) {
                 ShowWindow(findPtr, 9);
                 SetForegroundWindow(findPtr);
-                return true;
             }
-            else {
-                return false;
-            }
+            return findPtr;
         }
 
         private void launchWow() {
-            if (this.activateWindow("暴雪战网"))
+            if (this.activateWindow("暴雪战网").ToInt32() != 0)
             {
                 Thread.Sleep(300);
                 SendKeys.SendWait("{ENTER}");
@@ -224,7 +266,6 @@ namespace LetMeRaid
             else {
                 Console.WriteLine("BN NOT FOUND");
             }
-            Thread.CurrentThread.Abort();
         }
 
         private bool[] checkProcess() {
@@ -288,12 +329,32 @@ namespace LetMeRaid
 
         private void button3_Click(object sender, EventArgs e)
         {
-            MessageBox.Show("使用说明\n\n1. 保持战网开启并激活魔兽世界子页面\n2. 魔兽世界配置为窗口（最大化）模式\n\nBY:小脑斧\nGithub:Nihiue");
+            MessageBox.Show("使用说明\n\n1. 保持战网开启并选中魔兽世界\n2. 目前仅适配 16:9 屏幕，其它比例的显示器请使用 16:9 窗口模式\n\nBY: 小脑斧 2019/11/4");
         }
 
         private void groupBox2_Enter(object sender, EventArgs e)
         {
 
+        }
+
+        private void radioButton1_CheckedChanged(object sender, EventArgs e)
+        {
+
+        }
+
+        private void linkLabel1_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
+        {
+            System.Diagnostics.Process.Start("https://github.com/Nihiue/LetMeRaid");
+        }
+        void textBox1_MouseDown(object sender, MouseEventArgs e)
+        {
+            HideCaret(((TextBox)sender).Handle);
+
+        }
+
+        private void textBox1_changed(object sender, EventArgs e)
+        {
+            HideCaret(((TextBox)sender).Handle);
         }
     }
 }
