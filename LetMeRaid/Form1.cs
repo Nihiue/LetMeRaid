@@ -89,7 +89,7 @@ namespace LetMeRaid
             DateTime dt = DateTime.Now;
             bool inTimeRange = dt.TimeOfDay.TotalMinutes >= (double)(this.numericUpDown1.Value * 60 + this.numericUpDown2.Value);
 
-            if (!inTimeRange && false) {
+            if (!inTimeRange) {
                 return;
             }
 
