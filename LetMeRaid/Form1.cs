@@ -14,6 +14,7 @@ namespace LetMeRaid
     {
         private System.Timers.Timer tickTimer;
         private bool enableAutoRestart = true;
+        private bool autoCloseTeamviewerDialog = false;
         delegate void deleAppendLog(string text);
 
         [DllImport("user32.dll")]
@@ -91,6 +92,10 @@ namespace LetMeRaid
 
             if (!inTimeRange) {
                 return;
+            }
+
+            if (this.autoCloseTeamviewerDialog) {
+                this.closeTeamviewerDialog();
             }
 
             bool[] psStatus = this.checkProcess();
@@ -242,7 +247,7 @@ namespace LetMeRaid
                 int cy = startPos.Y + cRect.Bottom * 1320 / 1440;
                 SetCursorPos(cx, cy);
                 mouse_event(0x0002, 0, 0, 0, 0);
-                Thread.Sleep(90);
+                Thread.Sleep(65);
                 mouse_event(0x0004, 0, 0, 0, 0);
             }
         }
@@ -260,7 +265,7 @@ namespace LetMeRaid
         private void launchWow() {
             if (this.activateWindow("暴雪战网").ToInt32() != 0)
             {
-                Thread.Sleep(300);
+                Thread.Sleep(200);
                 SendKeys.SendWait("{ENTER}");
             }
             else {
@@ -283,7 +288,18 @@ namespace LetMeRaid
                 return ret;
         }
 
-
+        private void closeTeamviewerDialog() {
+            IntPtr findPtr = FindWindow(null, "Sponsored session");
+            if (findPtr.ToInt32() == 0) {
+                findPtr = FindWindow(null, "发起会话");
+            }
+            if (findPtr.ToInt32() != 0) {
+                ShowWindow(findPtr, 9);
+                SetForegroundWindow(findPtr);
+                Thread.Sleep(200);
+                SendKeys.SendWait("{ENTER}");
+            }
+        }
 
         private void appendLog(string log) {
             List<string> tmp = this.textBox1.Lines.ToList();
@@ -303,6 +319,7 @@ namespace LetMeRaid
         private void startService() {
             this.toggleUI(true);
             this.enableAutoRestart = this.radioButton1.Checked;
+            this.autoCloseTeamviewerDialog = this.checkBox1.Checked;
             this.tickTimer.Enabled = true;
             appendLog("启用服务");
         }
