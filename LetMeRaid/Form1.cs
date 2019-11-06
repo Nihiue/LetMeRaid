@@ -14,6 +14,7 @@ namespace LetMeRaid
     {
         private System.Timers.Timer tickTimer;
         private bool enableAutoRestart = true;
+        private bool autoStartService = false;
         delegate void deleAppendLog(string text);
 
         [DllImport("user32.dll")]
@@ -72,9 +73,13 @@ namespace LetMeRaid
             return baseImage;           
         }
 
-        public MainWindow()
+        public MainWindow(string[] args)
         {
             InitializeComponent();
+
+            if (Array.IndexOf(args, "--auto-start") >= 0) {
+                this.autoStartService = true;                
+            }
         }
 
         private void Form1_Load(object sender, EventArgs e)
@@ -84,6 +89,9 @@ namespace LetMeRaid
             timer.AutoReset = true;
             timer.Enabled = false;
             this.tickTimer = timer;
+            if (this.autoStartService) {
+                this.startService();
+            }
         }
 
         public void onTick(object source, System.Timers.ElapsedEventArgs e) {
