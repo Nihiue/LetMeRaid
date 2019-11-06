@@ -14,7 +14,6 @@ namespace LetMeRaid
     {
         private System.Timers.Timer tickTimer;
         private bool enableAutoRestart = true;
-        private bool autoCloseTeamviewerDialog = false;
         delegate void deleAppendLog(string text);
 
         [DllImport("user32.dll")]
@@ -35,6 +34,7 @@ namespace LetMeRaid
         [return: MarshalAs(UnmanagedType.Bool)]
         static extern bool GetWindowRect(IntPtr hWnd, ref RECT lpRect);
         [StructLayout(LayoutKind.Sequential)]
+
         public struct RECT
         {
             public int Left; 
@@ -94,33 +94,36 @@ namespace LetMeRaid
                 return;
             }
 
-            if (this.autoCloseTeamviewerDialog) {
-                this.closeTeamviewerDialog();
-            }
-
             bool[] psStatus = this.checkProcess();
 
             if (!psStatus[0]) {
-                this.BeginInvoke(new deleAppendLog(appendLog), "未检测到战网客户端");
+                this.appendLog("未检测到战网客户端");
                 return;
             }
+         
             if (psStatus[1])
             {
                 if (!this.enableAutoRestart) {
                     return;
                 }
+
+                if (psStatus[2])
+                {
+                    // 检测到 teamviewer， 关闭弹窗以防止影响截图
+                    this.closeTeamviewerPopup();
+                }
                 int status = this.getWowStatus();
 
                 if (status == -1) {                    
-                    this.BeginInvoke(new deleAppendLog(appendLog), "掉线，关闭魔兽世界");
+                    this.appendLog("掉线，关闭魔兽世界");
                     this.killWow();
                 } else if (status == 1) {
-                    this.BeginInvoke(new deleAppendLog(appendLog), "人物选择界面，选择人物");
+                    this.appendLog("人物选择界面，选择人物");
                     this.enterGame();                    
                 }
             }
             else {
-                this.BeginInvoke(new deleAppendLog(appendLog), "启动魔兽世界");
+                this.appendLog("启动魔兽世界");
                 this.launchWow();
             }
         }
@@ -184,7 +187,7 @@ namespace LetMeRaid
                 { 2462, 1358 }
             };
 
-            IntPtr findPtr = this.activateWindow("魔兽世界");
+            IntPtr findPtr = this.activateWindow("GxWindowClass", "魔兽世界");
 
             if (findPtr.ToInt32() != 0)
             {
@@ -209,7 +212,7 @@ namespace LetMeRaid
             }
             else
             {
-                Console.WriteLine("WOW NOT FOUND");          
+                this.appendLog("未找到 WOW 窗口");
             }
             return 0;
         }
@@ -234,7 +237,7 @@ namespace LetMeRaid
         }
 
         private void enterGame() {
-            IntPtr findPtr = FindWindow(null, "魔兽世界");
+            IntPtr findPtr = this.activateWindow("GxWindowClass", "魔兽世界");
             if (findPtr.ToInt32() != 0) {
                 RECT cRect = new RECT();
                 RECT wRect = new RECT();
@@ -252,29 +255,29 @@ namespace LetMeRaid
             }
         }
 
-        private IntPtr activateWindow(string title) {
-            IntPtr findPtr = FindWindow(null, title);
+        private IntPtr activateWindow(string wClass, string title) {
+            IntPtr findPtr = FindWindow(wClass, title);
 
             if (findPtr.ToInt32() != 0) {
                 ShowWindow(findPtr, 9);
                 SetForegroundWindow(findPtr);
+                Thread.Sleep(300);
             }
             return findPtr;
         }
 
         private void launchWow() {
-            if (this.activateWindow("暴雪战网").ToInt32() != 0)
-            {
-                Thread.Sleep(200);
+            if (this.activateWindow("Qt5QWindowOwnDCIcon", "暴雪战网").ToInt32() != 0)
+            {              
                 SendKeys.SendWait("{ENTER}");
             }
             else {
-                Console.WriteLine("BN NOT FOUND");
+                this.appendLog("未找到 Battle.net 窗口");
             }
         }
 
         private bool[] checkProcess() {
-            bool[] ret = { false, false };
+            bool[] ret = { false, false, false };
             Process[] ps = Process.GetProcesses();
             foreach (Process p in ps) {
                 if (p.ProcessName.ToLower() == "battle.net") {
@@ -284,27 +287,35 @@ namespace LetMeRaid
                 {
                     ret[1] = true;
                 }
+                if (p.ProcessName.ToLower() == "teamviewer")
+                {
+                    ret[2] = true;
+                }
             }
                 return ret;
         }
 
-        private void closeTeamviewerDialog() {
-            IntPtr findPtr = FindWindow(null, "Sponsored session");
+        private void closeTeamviewerPopup() {           
+            IntPtr findPtr = this.activateWindow("#32770", "Sponsored session");
             if (findPtr.ToInt32() == 0) {
-                findPtr = FindWindow(null, "发起会话");
+                findPtr = this.activateWindow("#32770", "发起会话");
             }
             if (findPtr.ToInt32() != 0) {
-                ShowWindow(findPtr, 9);
-                SetForegroundWindow(findPtr);
-                Thread.Sleep(200);
+                this.appendLog("关闭 TeamViewer 弹窗");
                 SendKeys.SendWait("{ENTER}");
+                Thread.Sleep(500);
             }
         }
 
         private void appendLog(string log) {
-            List<string> tmp = this.textBox1.Lines.ToList();
             DateTime dt = DateTime.Now;
-            tmp.Add(string.Format("{0:T}", dt) + " " + log);
+            string line = string.Format("{0:T} {1}", dt, log);
+            this.BeginInvoke(new deleAppendLog(updateLogBox), line);
+        }
+
+        private void updateLogBox(string line) {
+            List<string> tmp = this.textBox1.Lines.ToList();
+            tmp.Add(line);
             this.textBox1.Lines = tmp.ToArray();
         }
 
@@ -319,7 +330,6 @@ namespace LetMeRaid
         private void startService() {
             this.toggleUI(true);
             this.enableAutoRestart = this.radioButton1.Checked;
-            this.autoCloseTeamviewerDialog = this.checkBox1.Checked;
             this.tickTimer.Enabled = true;
             appendLog("启用服务");
         }
@@ -349,15 +359,7 @@ namespace LetMeRaid
             MessageBox.Show("使用说明\n\n1. 保持战网开启并选中魔兽世界\n2. 目前仅适配 16:9 屏幕，其它比例的显示器请使用 16:9 窗口模式\n\nBY: 小脑斧 2019/11/4");
         }
 
-        private void groupBox2_Enter(object sender, EventArgs e)
-        {
-
-        }
-
-        private void radioButton1_CheckedChanged(object sender, EventArgs e)
-        {
-
-        }
+       
 
         private void linkLabel1_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
         {
@@ -373,5 +375,6 @@ namespace LetMeRaid
         {
             HideCaret(((TextBox)sender).Handle);
         }
+
     }
 }
