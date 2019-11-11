@@ -35,7 +35,7 @@ namespace LetMeRaid
         [return: MarshalAs(UnmanagedType.Bool)]
         static extern bool GetWindowRect(IntPtr hWnd, ref RECT lpRect);
         [StructLayout(LayoutKind.Sequential)]
-
+       
         public struct RECT
         {
             public int Left; 
@@ -43,6 +43,8 @@ namespace LetMeRaid
             public int Right; 
             public int Bottom;
         }
+        [DllImport("user32.dll", SetLastError = true)]
+        internal static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
 
         [DllImport("user32")]
         public static extern int GetSystemMetrics(int nIndex);
@@ -59,6 +61,14 @@ namespace LetMeRaid
                 start.Y = start.Y + titleHeight + borderWidth;
             }
             return start;
+        }
+
+        private bool isRatioSupported(int w, int h) {
+            double r = (double)w / h;
+            if (r > 1.772 && r < 1.783) {
+                return true;
+            }
+            return false;
         }
         public static Bitmap getScreenshot(ref RECT cRect, ref RECT wRect)
         {
@@ -203,7 +213,20 @@ namespace LetMeRaid
                 RECT wRect = new RECT();
 
                 GetWindowRect(findPtr, ref wRect);
-                GetClientRect(findPtr, ref cRect);
+                GetClientRect(findPtr, ref cRect);         
+
+                if (!this.isRatioSupported(cRect.Right, cRect.Bottom)) {                    
+                    if (wRect.Bottom - wRect.Top != cRect.Bottom)
+                    {
+                        // 窗口模式
+                        this.appendLog("自动重设窗口大小");
+                        MoveWindow(findPtr, 0, 0, 1280 + wRect.Right - wRect.Left - cRect.Right, 720 + wRect.Bottom - wRect.Top - cRect.Bottom, true);
+                    }
+                    else {
+                        this.appendLog("不支持当前屏幕比例");
+                    }
+                    return 0;
+                }
 
                 Bitmap bmp = getScreenshot(ref cRect, ref wRect);
                 LockBitmap lockbmp = new LockBitmap(bmp);
@@ -364,7 +387,14 @@ namespace LetMeRaid
 
         private void button3_Click(object sender, EventArgs e)
         {
-            MessageBox.Show("使用说明\n\n1. 保持战网开启并选中魔兽世界\n2. 目前仅适配 16:9 屏幕，其它比例的显示器请使用 16:9 窗口模式\n\nBY: 小脑斧 2019/11/4");
+            string[] info = {
+                "1. 保持战网开启并选中魔兽世界",
+                "2. 目前仅适配 16:9 屏幕，其它比例的显示器请使用窗口模式",
+                "3. 暂不支持多开",
+                "",
+                "BY: 小脑斧 2019/11/4"
+            };
+            MessageBox.Show(String.Join("\n", info), "使用说明", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
        
