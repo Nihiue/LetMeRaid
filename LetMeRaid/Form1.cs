@@ -15,6 +15,7 @@ namespace LetMeRaid
         private System.Timers.Timer tickTimer;
         private bool enableAutoRestart = true;
         private bool autoStartService = false;
+        private bool ensureFocusBNWow = false;
         delegate void deleAppendLog(string text);
 
         [DllImport("user32.dll")]
@@ -52,6 +53,7 @@ namespace LetMeRaid
         private static extern bool HideCaret(IntPtr hWnd);
         private static Point getClientStart(ref RECT cRect, ref RECT wRect) {
             Point start = new Point(wRect.Left, wRect.Top);
+            // Console.WriteLine("({0},{1})  ({2},{3}) {4}", wRect.Right-wRect.Left, wRect.Bottom - wRect.Top, cRect.Right, cRect.Bottom, GetSystemMetrics(4));
             if (wRect.Bottom - wRect.Top != cRect.Bottom)
             {
                 // 非全屏                
@@ -88,7 +90,8 @@ namespace LetMeRaid
             InitializeComponent();
 
             if (Array.IndexOf(args, "--auto-start") >= 0) {
-                this.autoStartService = true;                
+                this.autoStartService = true;
+                this.ensureFocusBNWow = true;
             }
         }
 
@@ -220,7 +223,7 @@ namespace LetMeRaid
                     {
                         // 窗口模式
                         this.appendLog("自动重设窗口大小");
-                        MoveWindow(findPtr, 0, 0, 1280 + wRect.Right - wRect.Left - cRect.Right, 720 + wRect.Bottom - wRect.Top - cRect.Bottom, true);
+                        MoveWindow(findPtr, 50, 50, 1280 + wRect.Right - wRect.Left - cRect.Right, 720 + wRect.Bottom - wRect.Top - cRect.Bottom, true);
                     }
                     else {
                         this.appendLog("不支持当前屏幕比例");
@@ -279,10 +282,7 @@ namespace LetMeRaid
 
                 int cx = startPos.X + cRect.Right / 2;
                 int cy = startPos.Y + cRect.Bottom * 1320 / 1440;
-                SetCursorPos(cx, cy);
-                mouse_event(0x0002, 0, 0, 0, 0);
-                Thread.Sleep(65);
-                mouse_event(0x0004, 0, 0, 0, 0);
+                this.mouseClick(cx, cy, 85);
             }
         }
 
@@ -297,10 +297,24 @@ namespace LetMeRaid
             return findPtr;
         }
 
+        private void mouseClick(int x, int y, int duration = 85) {
+            SetCursorPos(x, y);
+            mouse_event(0x0002, 0, 0, 0, 0);
+            Thread.Sleep(duration);
+            mouse_event(0x0004, 0, 0, 0, 0);
+        }
+
         private void launchWow() {
-            if (this.activateWindow("Qt5QWindowOwnDCIcon", "暴雪战网").ToInt32() != 0)
-            {              
-                SendKeys.SendWait("{ENTER}");
+            IntPtr findPtr = this.activateWindow("Qt5QWindowOwnDCIcon", "暴雪战网");
+            if (findPtr.ToInt32() != 0)
+            {
+                MoveWindow(findPtr, 50, 50, 1380, 850, true);
+                Thread.Sleep(1000);
+                if (this.ensureFocusBNWow) {
+                    this.mouseClick(50 + 135, 50 + 155);
+                    Thread.Sleep(1000);
+                }              
+                this.mouseClick(50 + 480, 50 + 750);
             }
             else {
                 this.appendLog("未找到 Battle.net 窗口");
