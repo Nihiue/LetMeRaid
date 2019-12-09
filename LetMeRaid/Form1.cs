@@ -36,12 +36,12 @@ namespace LetMeRaid
         [return: MarshalAs(UnmanagedType.Bool)]
         static extern bool GetWindowRect(IntPtr hWnd, ref RECT lpRect);
         [StructLayout(LayoutKind.Sequential)]
-       
+
         public struct RECT
         {
-            public int Left; 
-            public int Top; 
-            public int Right; 
+            public int Left;
+            public int Top;
+            public int Right;
             public int Bottom;
         }
         [DllImport("user32.dll", SetLastError = true)]
@@ -56,7 +56,7 @@ namespace LetMeRaid
             // Console.WriteLine("({0},{1})  ({2},{3}) {4}", wRect.Right-wRect.Left, wRect.Bottom - wRect.Top, cRect.Right, cRect.Bottom, GetSystemMetrics(4));
             if (wRect.Bottom - wRect.Top != cRect.Bottom)
             {
-                // 非全屏                
+                // 非全屏
                 int titleHeight = GetSystemMetrics(4);
                 int borderWidth = (wRect.Right - wRect.Left - cRect.Right) / 2;
                 start.X = start.X + borderWidth;
@@ -65,16 +65,21 @@ namespace LetMeRaid
             return start;
         }
 
-        private bool isRatioSupported(int w, int h) {
+        private int checkRatioType(int w, int h) {
             double r = (double)w / h;
             if (r > 1.772 && r < 1.783) {
-                return true;
+                // 16:9
+                return 1;
             }
-            return false;
+            if (r > 2.37 && r < 2.39) {
+                // 21:9
+                return 2;
+            }
+            return 0;
         }
         public static Bitmap getScreenshot(ref RECT cRect, ref RECT wRect)
         {
-           
+
             Size capSize = new Size(cRect.Right - cRect.Left, cRect.Bottom - cRect.Top);
             Point capStart = getClientStart(ref cRect, ref wRect);
             Bitmap baseImage = new Bitmap(capSize.Width, capSize.Height);
@@ -82,7 +87,7 @@ namespace LetMeRaid
             g.CopyFromScreen(capStart, new Point(0, 0), capSize);
             g.Dispose();
 
-            return baseImage;           
+            return baseImage;
         }
 
         public MainWindow(string[] args)
@@ -121,7 +126,7 @@ namespace LetMeRaid
                 this.appendLog("未检测到战网客户端");
                 return;
             }
-         
+
             if (psStatus[1])
             {
                 if (!this.enableAutoRestart) {
@@ -135,12 +140,12 @@ namespace LetMeRaid
                 }
                 int status = this.getWowStatus();
 
-                if (status == -1) {                    
+                if (status == -1) {
                     this.appendLog("掉线，关闭魔兽世界");
                     this.killWow();
                 } else if (status == 1) {
                     this.appendLog("人物选择界面，选择人物");
-                    this.enterGame();                    
+                    this.enterGame();
                 }
             }
             else {
@@ -160,26 +165,26 @@ namespace LetMeRaid
             return (c1.R - c2.R) * (c1.R - c2.R) + (c1.G - c2.G) * (c1.G - c2.G) + (c1.B - c2.B) * (c1.B - c2.B);
         }
 
-        private int countMatchedPixels(LockBitmap lockbmp, int[,] pts) {
+        private int countMatchedPixels(LockBitmap lockbmp, int[,] pts, int unitWidth, int unitHeight) {
 
             Color st = Color.FromArgb(123, 9, 6);
             int ret = 0;
 
             int width = lockbmp.Width;
             int height = lockbmp.Height;
-    
+
             for (int i = 0; i < pts.Length / 2; i++) {
-                int ptx = pts[i,0] * width / 2560;
-                int pty = pts[i,1] * height / 1440;
-                if (calColorErr(st, lockbmp.GetPixel(ptx, pty)) < 500) {                   
+                int ptx = pts[i,0] * width / unitWidth;
+                int pty = pts[i,1] * height / unitHeight;
+                if (calColorErr(st, lockbmp.GetPixel(ptx, pty)) < 1200) {
                     ret += 1;
                 }
             }
             return ret;
         }
         private int getWowStatus() {
-            int[,] loginPts = {
-                { 70, 1035 }, 
+            int[,] loginPts_16_9 = {
+                { 70, 1035 },
                 { 235, 1034 },
                 { 77, 1106 },
                 { 235, 1106 },
@@ -193,7 +198,37 @@ namespace LetMeRaid
                 { 2337, 1345 }
             };
 
-            int[,] choosePts = {
+            int[,] choosePts_16_9 = {
+                { 118, 1355 },
+                { 262, 1355 },
+                { 260, 1358 },
+                { 267, 1407 },
+                { 1155, 1323 },
+                { 1396, 1321 },
+                { 2219, 97 },
+                { 2188, 1155 },
+                { 2070, 1357 },
+                { 2238, 1356 },
+                { 2362, 1358 },
+                { 2462, 1358 }
+            };
+
+            int[,] loginPts_21_9 = {
+                { 70, 1035 },
+                { 235, 1034 },
+                { 77, 1106 },
+                { 235, 1106 },
+                { 75, 1176 },
+                { 237, 1176 },
+                { 1211, 1013 },
+                { 1381, 1013 },
+                { 2332, 990 },
+                { 2327, 1057 },
+                { 2327, 1125 },
+                { 2337, 1345 }
+            };
+
+            int[,] choosePts_21_9 = {
                 { 118, 1355 },
                 { 262, 1355 },
                 { 260, 1358 },
@@ -216,9 +251,11 @@ namespace LetMeRaid
                 RECT wRect = new RECT();
 
                 GetWindowRect(findPtr, ref wRect);
-                GetClientRect(findPtr, ref cRect);         
+                GetClientRect(findPtr, ref cRect);
 
-                if (!this.isRatioSupported(cRect.Right, cRect.Bottom)) {                    
+                int ratioType = this.checkRatioType(cRect.Right, cRect.Bottom);
+
+                if (ratioType == 0) {
                     if (wRect.Bottom - wRect.Top != cRect.Bottom)
                     {
                         // 窗口模式
@@ -226,7 +263,7 @@ namespace LetMeRaid
                         MoveWindow(findPtr, 50, 50, 1280 + wRect.Right - wRect.Left - cRect.Right, 720 + wRect.Bottom - wRect.Top - cRect.Bottom, true);
                     }
                     else {
-                        this.appendLog("不支持当前屏幕比例");
+                        this.appendLog("不支持当前屏幕比例, 请启用窗口模式");
                     }
                     return 0;
                 }
@@ -235,13 +272,27 @@ namespace LetMeRaid
                 LockBitmap lockbmp = new LockBitmap(bmp);
                 lockbmp.LockBits();
 
-                if (countMatchedPixels(lockbmp, loginPts) >= 10)
-                {
-                    return -1;
-                }
-                if (countMatchedPixels(lockbmp, choosePts) >= 10)
-                {
-                    return 1;
+                if (ratioType == 1) {
+                    // 16:9
+                    if (countMatchedPixels(lockbmp, loginPts_16_9, 2560, 1440) >= 10)
+                    {
+                        return -1;
+                    }
+                    if (countMatchedPixels(lockbmp, choosePts_16_9, 2560, 1440) >= 10)
+                    {
+                        return 1;
+                    }
+
+                } else if (ratioType == 2) {
+                    // 21:9
+                    if (countMatchedPixels(lockbmp, loginPts_21_9， 2560, 1080) >= 10)
+                    {
+                        return -1;
+                    }
+                    if (countMatchedPixels(lockbmp, choosePts_21_9, 2560, 1080) >= 10)
+                    {
+                        return 1;
+                    }
                 }
             }
             else
@@ -313,7 +364,7 @@ namespace LetMeRaid
                 if (this.ensureFocusBNWow) {
                     this.mouseClick(50 + 135, 50 + 155);
                     Thread.Sleep(1000);
-                }              
+                }
                 this.mouseClick(50 + 480, 50 + 750);
             }
             else {
@@ -340,7 +391,7 @@ namespace LetMeRaid
                 return ret;
         }
 
-        private void closeTeamviewerPopup() {           
+        private void closeTeamviewerPopup() {
             IntPtr findPtr = this.activateWindow("#32770", "Sponsored session");
             if (findPtr.ToInt32() == 0) {
                 findPtr = this.activateWindow("#32770", "发起会话");
@@ -391,7 +442,7 @@ namespace LetMeRaid
                 MessageBox.Show("请先运行战网客户端！");
                 return;
             }
-            this.startService();          
+            this.startService();
         }
 
         private void button2_Click(object sender, EventArgs e)
@@ -411,7 +462,7 @@ namespace LetMeRaid
             MessageBox.Show(String.Join("\n", info), "使用说明", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
-       
+
 
         private void linkLabel1_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
         {
