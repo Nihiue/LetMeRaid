@@ -17,7 +17,8 @@ namespace LetMeRaid
         private bool autoStartService = false;
         private bool ensureFocusBNWow = false;
         delegate void deleAppendLog(string text);
-
+        [DllImport("kernel32.dll")]
+        static extern uint SetThreadExecutionState(uint esFlags);
         [DllImport("user32.dll")]
         private static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
         [DllImport("user32.dll")]
@@ -63,6 +64,19 @@ namespace LetMeRaid
                 start.Y = start.Y + titleHeight + borderWidth;
             }
             return start;
+        }
+
+        private void preventSystemSleep(bool flag) {
+            const uint ES_SYSTEM_REQUIRED = 0x00000001;
+            const uint ES_DISPLAY_REQUIRED = 0x00000002;
+            const uint ES_CONTINUOUS = 0x80000000;
+            if (flag)
+            {
+                SetThreadExecutionState(ES_CONTINUOUS | ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED);
+            }
+            else {
+                SetThreadExecutionState(ES_CONTINUOUS);
+            }
         }
 
         bool isRatioSupported(int w, int h) {
@@ -391,11 +405,13 @@ namespace LetMeRaid
             this.toggleUI(true);
             this.scheduleMode = !this.radioButton1.Checked;
             this.tickTimer.Enabled = true;
+            this.preventSystemSleep(true);
             appendLog("启用服务");
         }
         private void stopService() {
             this.toggleUI(false);
             this.tickTimer.Enabled = false;
+            this.preventSystemSleep(false);
             appendLog("停止服务");
         }
         private void button1_Click(object sender, EventArgs e)
