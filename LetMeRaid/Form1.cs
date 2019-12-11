@@ -207,7 +207,7 @@ namespace LetMeRaid
 
             
             long ts = (new DateTimeOffset(DateTime.UtcNow)).ToUnixTimeSeconds();
-            if (this.remoteReportToken.Contains("@") && ts - this.lastRemoteReportTime > 300) {
+            if (this.remoteReportToken.Contains("@") && ts - this.lastRemoteReportTime > 298) {
                 this.lastRemoteReportTime = ts;
                 this.sendReportAsync(String.Join("\n", this.textBox1.Lines), this.lastScreenshot);
             } else if (this.lastScreenshot != null) {
@@ -229,8 +229,9 @@ namespace LetMeRaid
             return null;
         }
 
-        private byte[] encodeImage(Bitmap bmp) { 
-            Bitmap resizedImage = new Bitmap(bmp, new Size(bmp.Width * 800 / bmp.Height, 800));
+        private byte[] encodeImage(Bitmap bmp) {
+            int resHeight = 720;
+            Bitmap resizedImage = new Bitmap(bmp, new Size(bmp.Width * resHeight / bmp.Height, resHeight));
 
             ImageCodecInfo jgpEncoder = GetEncoder(ImageFormat.Jpeg);
             Encoder myEncoder = Encoder.Quality;
@@ -258,7 +259,7 @@ namespace LetMeRaid
                     byte[] file_bytes = this.encodeImage(bmp);                    
                     form.Add(new ByteArrayContent(file_bytes, 0, file_bytes.Length), "image", "screenshot.jpg");
                 }               
-                await httpClient.PostAsync("https://www.nihi.me/lmr_api/report", form);
+                await httpClient.PostAsync("http://ap.nihi.me/lmr_api/report", form);
             }
             catch (Exception e)
             {
@@ -283,20 +284,20 @@ namespace LetMeRaid
             return (c1.R - c2.R) * (c1.R - c2.R) + (c1.G - c2.G) * (c1.G - c2.G) + (c1.B - c2.B) * (c1.B - c2.B);
         }
 
-        private int countMatchedPixels(LockBitmap lockbmp, int[,] pts) {
+        private int countMatchedPixels(Bitmap bmp, int[,] pts) {
 
             Color st = Color.FromArgb(123, 9, 6);
             int ret = 0;
 
-            int width = lockbmp.Width;
-            int height = lockbmp.Height;
+            int width = bmp.Width;
+            int height = bmp.Height;
 
             int offsetX = (width - height * 16 / 9) / 2;
 
             for (int i = 0; i < pts.Length / 2; i++) {
                 int ptx = offsetX + pts[i,0] * height / 2560 * 16 / 9;
                 int pty = pts[i,1] * height / 1440;
-                if (calColorErr(st, lockbmp.GetPixel(ptx, pty)) < 1600) {
+                if (calColorErr(st, bmp.GetPixel(ptx, pty)) < 1600) {
                     ret += 1;
                 }
             }
@@ -350,21 +351,17 @@ namespace LetMeRaid
                 }
 
                 Bitmap bmp = getScreenshot(ref cRect, ref wRect);
-                LockBitmap lockbmp = new LockBitmap(bmp);
-                lockbmp.LockBits();
 
                 int ret = 0;
 
-                if (countMatchedPixels(lockbmp, loginPts) >= 10)
+                if (countMatchedPixels(bmp, loginPts) >= 10)
                 {
                     ret = -1;
                 }
-                else if (countMatchedPixels(lockbmp, choosePts) >= 10)
+                else if (countMatchedPixels(bmp, choosePts) >= 10)
                 {
                     ret = 1;
                 }
-
-                lockbmp.UnlockBits();
                 this.lastScreenshot = bmp;
                 return ret;
             }
