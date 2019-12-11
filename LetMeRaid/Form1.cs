@@ -6,6 +6,11 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Drawing;
+using System.Drawing.Imaging;
+using System.Net;
+using System.Collections.Specialized;
+using System.IO;
+using System.Net.Http;
 
 namespace LetMeRaid
 {
@@ -15,7 +20,15 @@ namespace LetMeRaid
         private System.Timers.Timer tickTimer;
         private bool scheduleMode = false;
         private bool autoStartService = false;
-        private bool ensureFocusBNWow = false;
+        private bool focusFirstBNGame = false;
+
+        // Remote Report
+        private string remoteReportToken = "";
+        private bool remoteReportImage = false;
+        private long lastRemoteReportTime = 0;
+        private Bitmap lastScreenshot = null;
+
+
         delegate void deleAppendLog(string text);
         [DllImport("kernel32.dll")]
         static extern uint SetThreadExecutionState(uint esFlags);
@@ -45,13 +58,34 @@ namespace LetMeRaid
             public int Right;
             public int Bottom;
         }
+
         [DllImport("user32.dll", SetLastError = true)]
         internal static extern bool MoveWindow(IntPtr hWnd, int X, int Y, int nWidth, int nHeight, bool bRepaint);
+
+        [DllImport("kernel32")]
+        private static extern int GetPrivateProfileString(string lpAppName, string lpKeyName, string lpDefault, System.Text.StringBuilder lpReturnedString, int nSize, string lpFileName);
 
         [DllImport("user32")]
         public static extern int GetSystemMetrics(int nIndex);
         [DllImport("user32", EntryPoint = "HideCaret")]
         private static extern bool HideCaret(IntPtr hWnd);
+
+        private string readConfigFile(string key, string def) {
+            string filePath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.ini");
+            System.Text.StringBuilder sb = new System.Text.StringBuilder(1024);
+            GetPrivateProfileString("LetMeRaid", key, def, sb, 1024, filePath);
+            return sb.ToString();
+        }
+        private void loadConfig() {
+            this.focusFirstBNGame = readConfigFile("FocusFirstBattleNetGame", "0") == "1";
+            string t = readConfigFile("RemoteReportToken", "");
+            if (t.Contains("@")) {
+                this.remoteReportToken = t;
+                this.appendLog("已配置远程日志");
+            }
+            
+            this.remoteReportImage = readConfigFile("RemoteReportImage", "0") == "1";            
+        }
         private static Point getClientStart(ref RECT cRect, ref RECT wRect) {
             Point start = new Point(wRect.Left, wRect.Top);
             // Console.WriteLine("({0},{1})  ({2},{3}) {4}", wRect.Right-wRect.Left, wRect.Bottom - wRect.Top, cRect.Right, cRect.Bottom, GetSystemMetrics(4));
@@ -101,14 +135,14 @@ namespace LetMeRaid
             InitializeComponent();
 
             if (Array.IndexOf(args, "--auto-start") >= 0) {
-                this.autoStartService = true;
-                this.ensureFocusBNWow = true;
+                this.autoStartService = true;                
             }
         }
 
         private void Form1_Load(object sender, EventArgs e)
         {
-            System.Timers.Timer timer = new System.Timers.Timer(8000);
+            this.loadConfig();
+            System.Timers.Timer timer = new System.Timers.Timer(1000);
             timer.Elapsed += new System.Timers.ElapsedEventHandler(this.onTick);
             timer.AutoReset = true;
             timer.Enabled = false;
@@ -120,6 +154,10 @@ namespace LetMeRaid
 
         public void onTick(object source, System.Timers.ElapsedEventArgs e) {
 
+            if (this.tickTimer.Interval != 10 * 1000) {
+                this.tickTimer.Interval = 10 * 1000;
+            }
+            
             if (this.scheduleMode) {
                 DateTime dt = DateTime.Now;
                 bool inTimeRange = dt.TimeOfDay.TotalMinutes >= (double)(this.numericUpDown1.Value * 60 + this.numericUpDown2.Value);
@@ -129,34 +167,108 @@ namespace LetMeRaid
                     return;
                 }
             }
-           
+
             bool[] psStatus = this.checkProcess();
 
-            if (!psStatus[0]) {
-                this.appendLog("未检测到战网客户端");
-                return;
-            }
-
-            if (psStatus[1])
+            if (!psStatus[0])
             {
-                if (psStatus[2])
-                {
-                    // 检测到 teamviewer， 关闭弹窗以防止影响截图
-                    this.closeTeamviewerPopup();
-                }
-                int status = this.getWowStatus();
-
-                if (status == -1) {
-                    this.appendLog("掉线，关闭魔兽世界");
-                    this.killWow();
-                } else if (status == 1) {
-                    this.appendLog("人物选择界面，选择人物");
-                    this.enterGame();
-                }
+                this.appendLog("未检测到战网客户端");
             }
             else {
-                this.appendLog("启动魔兽世界");
-                this.launchWow();
+                if (psStatus[1])
+                {
+                    if (psStatus[2])
+                    {
+                        // 检测到 teamviewer， 关闭弹窗以防止影响截图
+                        this.closeTeamviewerPopup();
+                    }
+                    int status = this.getWowStatus();
+
+                    if (status == -1)
+                    {
+                        this.appendLog("掉线，关闭魔兽世界");
+                        this.killWow();
+                    }
+                    else if (status == 1)
+                    {
+                        this.appendLog("人物选择界面，选择人物");
+                        this.enterGame();
+                    }
+                }
+                else
+                {
+                    this.appendLog("启动魔兽世界");
+                    this.launchWow();
+                }
+            }
+
+
+            
+
+            
+            long ts = (new DateTimeOffset(DateTime.UtcNow)).ToUnixTimeSeconds();
+            if (this.remoteReportToken.Contains("@") && ts - this.lastRemoteReportTime > 300) {
+                this.lastRemoteReportTime = ts;
+                this.sendReportAsync(String.Join("\n", this.textBox1.Lines), this.lastScreenshot);
+            } else if (this.lastScreenshot != null) {
+                this.lastScreenshot.Dispose();
+            }
+            this.lastScreenshot = null;
+
+        }
+        private ImageCodecInfo GetEncoder(ImageFormat format)
+        {
+            ImageCodecInfo[] codecs = ImageCodecInfo.GetImageDecoders();
+            foreach (ImageCodecInfo codec in codecs)
+            {
+                if (codec.FormatID == format.Guid)
+                {
+                    return codec;
+                }
+            }
+            return null;
+        }
+
+        private byte[] encodeImage(Bitmap bmp) { 
+            Bitmap resizedImage = new Bitmap(bmp, new Size(bmp.Width * 800 / bmp.Height, 800));
+
+            ImageCodecInfo jgpEncoder = GetEncoder(ImageFormat.Jpeg);
+            Encoder myEncoder = Encoder.Quality;
+
+            var myEncoderParameters = new EncoderParameters(1);
+            var myEncoderParameter = new EncoderParameter(myEncoder, 60L);
+            myEncoderParameters.Param[0] = myEncoderParameter;
+
+            var stream = new MemoryStream();
+            resizedImage.Save(stream, jgpEncoder, myEncoderParameters);
+
+            resizedImage.Dispose();
+            byte[] imageBytes = stream.ToArray();
+            return imageBytes;
+        }
+        private async void sendReportAsync(string log, Bitmap bmp) {           
+            try
+            {
+                HttpClient httpClient = new HttpClient();
+                MultipartFormDataContent form = new MultipartFormDataContent();
+                form.Add(new StringContent(this.remoteReportToken), "token");
+                form.Add(new StringContent(log), "log");
+                if (this.remoteReportImage && bmp != null)
+                {
+                    byte[] file_bytes = this.encodeImage(bmp);                    
+                    form.Add(new ByteArrayContent(file_bytes, 0, file_bytes.Length), "image", "screenshot.jpg");
+                }               
+                await httpClient.PostAsync("https://www.nihi.me/lmr_api/report", form);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+            }
+            finally {                
+                if (bmp != null)
+                {
+                    bmp.Dispose();
+                }               
             }
         }
 
@@ -241,14 +353,20 @@ namespace LetMeRaid
                 LockBitmap lockbmp = new LockBitmap(bmp);
                 lockbmp.LockBits();
 
+                int ret = 0;
+
                 if (countMatchedPixels(lockbmp, loginPts) >= 10)
                 {
-                    return -1;
+                    ret = -1;
                 }
-                if (countMatchedPixels(lockbmp, choosePts) >= 10)
+                else if (countMatchedPixels(lockbmp, choosePts) >= 10)
                 {
-                    return 1;
+                    ret = 1;
                 }
+
+                lockbmp.UnlockBits();
+                this.lastScreenshot = bmp;
+                return ret;
             }
             else
             {
@@ -328,7 +446,7 @@ namespace LetMeRaid
                     return;
                 }
 
-                if (this.ensureFocusBNWow) {
+                if (this.focusFirstBNGame) {
                     MoveWindow(findPtr, 50, 50, 1380, 850, true);
                     Thread.Sleep(1000);
                     this.mouseClick(50 + 135, 50 + 155);
@@ -404,6 +522,7 @@ namespace LetMeRaid
         private void startService() {
             this.toggleUI(true);
             this.scheduleMode = !this.radioButton1.Checked;
+            this.tickTimer.Interval = 1000;
             this.tickTimer.Enabled = true;
             this.preventSystemSleep(true);
             appendLog("启用服务");

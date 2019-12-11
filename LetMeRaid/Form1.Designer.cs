@@ -41,7 +41,6 @@
             this.textBox1 = new System.Windows.Forms.TextBox();
             this.button2 = new System.Windows.Forms.Button();
             this.button3 = new System.Windows.Forms.Button();
-            this.linkLabel1 = new System.Windows.Forms.LinkLabel();
             this.groupBox1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)(this.numericUpDown2)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.numericUpDown1)).BeginInit();
@@ -170,7 +169,7 @@
             this.groupBox2.Margin = new System.Windows.Forms.Padding(2, 3, 2, 3);
             this.groupBox2.Name = "groupBox2";
             this.groupBox2.Padding = new System.Windows.Forms.Padding(2, 3, 2, 3);
-            this.groupBox2.Size = new System.Drawing.Size(409, 221);
+            this.groupBox2.Size = new System.Drawing.Size(409, 262);
             this.groupBox2.TabIndex = 2;
             this.groupBox2.TabStop = false;
             this.groupBox2.Text = "日志";
@@ -185,7 +184,7 @@
             this.textBox1.Name = "textBox1";
             this.textBox1.ReadOnly = true;
             this.textBox1.ScrollBars = System.Windows.Forms.ScrollBars.Vertical;
-            this.textBox1.Size = new System.Drawing.Size(404, 187);
+            this.textBox1.Size = new System.Drawing.Size(404, 221);
             this.textBox1.TabIndex = 0;
             this.textBox1.TextChanged += new System.EventHandler(this.textBox1_changed);
             this.textBox1.MouseDown += new System.Windows.Forms.MouseEventHandler(this.textBox1_MouseDown);
@@ -213,26 +212,12 @@
             this.button3.UseVisualStyleBackColor = true;
             this.button3.Click += new System.EventHandler(this.button3_Click);
             // 
-            // linkLabel1
-            // 
-            this.linkLabel1.AutoSize = true;
-            this.linkLabel1.LinkBehavior = System.Windows.Forms.LinkBehavior.HoverUnderline;
-            this.linkLabel1.LinkColor = System.Drawing.Color.FromArgb(((int)(((byte)(64)))), ((int)(((byte)(64)))), ((int)(((byte)(64)))));
-            this.linkLabel1.Location = new System.Drawing.Point(365, 532);
-            this.linkLabel1.Name = "linkLabel1";
-            this.linkLabel1.Size = new System.Drawing.Size(65, 23);
-            this.linkLabel1.TabIndex = 6;
-            this.linkLabel1.TabStop = true;
-            this.linkLabel1.Text = "Github";
-            this.linkLabel1.LinkClicked += new System.Windows.Forms.LinkLabelLinkClickedEventHandler(this.linkLabel1_LinkClicked);
-            // 
             // MainWindow
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(10F, 23F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackgroundImageLayout = System.Windows.Forms.ImageLayout.Center;
-            this.ClientSize = new System.Drawing.Size(439, 562);
-            this.Controls.Add(this.linkLabel1);
+            this.ClientSize = new System.Drawing.Size(439, 577);
             this.Controls.Add(this.button1);
             this.Controls.Add(this.button3);
             this.Controls.Add(this.button2);
@@ -245,7 +230,7 @@
             this.MaximizeBox = false;
             this.Name = "MainWindow";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
-            this.Text = "Let Me Raid 1.3.0";
+            this.Text = "Let Me Raid 1.3.1";
             this.Load += new System.EventHandler(this.Form1_Load);
             this.groupBox1.ResumeLayout(false);
             this.groupBox1.PerformLayout();
@@ -254,7 +239,6 @@
             this.groupBox2.ResumeLayout(false);
             this.groupBox2.PerformLayout();
             this.ResumeLayout(false);
-            this.PerformLayout();
 
         }
 
@@ -272,7 +256,6 @@
         private System.Windows.Forms.Button button2;
         private System.Windows.Forms.TextBox textBox1;
         private System.Windows.Forms.Button button3;
-        private System.Windows.Forms.LinkLabel linkLabel1;
     }
 }
 
