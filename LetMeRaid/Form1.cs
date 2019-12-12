@@ -375,7 +375,7 @@ namespace LetMeRaid
         private void killWow() {
             foreach (Process p in Process.GetProcesses())
             {
-                if (p.ProcessName.ToLower() == "wow")
+                if (p.ProcessName.ToLower() == "wow" || p.ProcessName.ToLower() == "wowclassic")
                 {
                     try
                     {
@@ -465,7 +465,7 @@ namespace LetMeRaid
                 if (p.ProcessName.ToLower() == "battle.net") {
                     ret[0] = true;
                 }
-                if (p.ProcessName.ToLower() == "wow")
+                if (p.ProcessName.ToLower() == "wow" || p.ProcessName.ToLower() == "wowclassic")
                 {
                     ret[1] = true;
                 }
