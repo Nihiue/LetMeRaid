@@ -411,7 +411,7 @@ namespace LetMeRaid
             IntPtr findPtr = FindWindow(wClass, title);
 
             if (findPtr.ToInt32() != 0) {
-                ShowWindow(findPtr, 9);
+                ShowWindow(findPtr, 5);
                 SetForegroundWindow(findPtr);
                 Thread.Sleep(300);
             }
