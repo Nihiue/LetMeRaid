@@ -21,12 +21,15 @@ namespace LetMeRaid
         private bool scheduleMode = false;
         private bool autoStartService = false;
         private bool focusFirstBNGame = false;
+        private bool enableDebugLog = true;
 
         // Remote Report
         private string remoteReportToken = "";
         private bool remoteReportImage = false;
         private long lastRemoteReportTime = 0;
         private Bitmap lastScreenshot = null;
+
+        private FileStream debugFileStream;
 
 
         delegate void deleAppendLog(string text);
@@ -57,6 +60,10 @@ namespace LetMeRaid
             public int Top;
             public int Right;
             public int Bottom;
+            public override string ToString()
+            {
+                return "{" + string.Format("Left={0},Top={1},Right={2},Bottom={3}", Left, Top, Right, Bottom) + "}";
+            }
         }
 
         [DllImport("user32.dll", SetLastError = true)]
@@ -71,7 +78,7 @@ namespace LetMeRaid
         private static extern bool HideCaret(IntPtr hWnd);
 
         private string readConfigFile(string key, string def) {
-            string filePath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.ini");
+            string filePath = System.IO.Path.Combine(Application.StartupPath, "config.ini");
             System.Text.StringBuilder sb = new System.Text.StringBuilder(1024);
             GetPrivateProfileString("LetMeRaid", key, def, sb, 1024, filePath);
             return sb.ToString();
@@ -85,6 +92,14 @@ namespace LetMeRaid
             }
             
             this.remoteReportImage = readConfigFile("RemoteReportImage", "0") == "1";            
+        }
+        private void initDebugLog() {
+            if (!this.enableDebugLog) {
+                return;
+            }
+            string filePath = System.IO.Path.Combine(Application.StartupPath, "lmr_log.txt");
+            this.debugFileStream = new FileStream(filePath, FileMode.Append);
+            this.appendDebugLog("app start");
         }
         private static Point getClientStart(ref RECT cRect, ref RECT wRect) {
             Point start = new Point(wRect.Left, wRect.Top);
@@ -117,16 +132,14 @@ namespace LetMeRaid
             double r = (double)w / h;
             return r > 1.772;
         }
-        public static Bitmap getScreenshot(ref RECT cRect, ref RECT wRect)
-        {
-
+        public Bitmap getScreenshot(ref RECT cRect, ref RECT wRect)
+        {            
             Size capSize = new Size(cRect.Right - cRect.Left, cRect.Bottom - cRect.Top);
             Point capStart = getClientStart(ref cRect, ref wRect);
             Bitmap baseImage = new Bitmap(capSize.Width, capSize.Height);
             Graphics g = Graphics.FromImage(baseImage);
             g.CopyFromScreen(capStart, new Point(0, 0), capSize);
             g.Dispose();
-
             return baseImage;
         }
 
@@ -142,6 +155,7 @@ namespace LetMeRaid
         private void Form1_Load(object sender, EventArgs e)
         {
             this.loadConfig();
+            this.initDebugLog();
             System.Timers.Timer timer = new System.Timers.Timer(1000);
             timer.Elapsed += new System.Timers.ElapsedEventHandler(this.onTick);
             timer.AutoReset = true;
@@ -202,10 +216,13 @@ namespace LetMeRaid
                 }
             }
 
-
-            
-
-            
+            if (this.enableDebugLog) {
+                this.debugFileStream.Flush();
+                if (this.lastScreenshot != null) {
+                    this.writeCapImage(this.lastScreenshot);
+                }
+            }
+        
             long ts = (new DateTimeOffset(DateTime.UtcNow)).ToUnixTimeSeconds();
             if (this.remoteReportToken.Contains("@") && ts - this.lastRemoteReportTime > 298) {
                 this.lastRemoteReportTime = ts;
@@ -215,6 +232,13 @@ namespace LetMeRaid
             }
             this.lastScreenshot = null;
 
+        }
+
+        private void writeCapImage(Bitmap bmp) {
+
+            string filePath = System.IO.Path.Combine(Application.StartupPath, "lmr_cap.jpg");
+            var stream = new FileStream(filePath, FileMode.Create);
+            bmp.Save(stream, ImageFormat.Jpeg);
         }
         private ImageCodecInfo GetEncoder(ImageFormat format)
         {
@@ -344,6 +368,8 @@ namespace LetMeRaid
                 GetWindowRect(findPtr, ref wRect);
                 GetClientRect(findPtr, ref cRect);
 
+                this.appendDebugLog(string.Format("cRect={0} wRect={1}", cRect, wRect));
+
                 if (!isRatioSupported(cRect.Right, cRect.Bottom)) {
                    this.appendLog("自动重设窗口大小");
                    MoveWindow(findPtr, 50, 50, 1280 + wRect.Right - wRect.Left - cRect.Right, 720 + wRect.Bottom - wRect.Top - cRect.Bottom, true);
@@ -353,12 +379,15 @@ namespace LetMeRaid
                 Bitmap bmp = getScreenshot(ref cRect, ref wRect);
 
                 int ret = 0;
+                int loginMatched = countMatchedPixels(bmp, loginPts);
+                int chooseMatched = countMatchedPixels(bmp, choosePts);
 
-                if (countMatchedPixels(bmp, loginPts) >= 10)
+                this.appendDebugLog(string.Format("pixel count login={0} choose={1}", loginMatched, chooseMatched));
+                if (loginMatched >= 10)
                 {
                     ret = -1;
                 }
-                else if (countMatchedPixels(bmp, choosePts) >= 10)
+                else if (chooseMatched >= 10)
                 {
                     ret = 1;
                 }
@@ -495,6 +524,22 @@ namespace LetMeRaid
             this.BeginInvoke(new deleAppendLog(updateLogBox), line);
         }
 
+        private void appendDebugLog(string log) {
+            if (!this.enableDebugLog) {
+                return;
+            }
+            try
+            {
+                DateTime dt = DateTime.Now;
+                string line = string.Format("{0:G} {1}\n", dt, log);
+                byte[] byets = System.Text.Encoding.UTF8.GetBytes(line);
+                this.debugFileStream.Write(byets, 0, byets.Length);
+            }
+            catch (Exception ex) {
+               Debug.WriteLine(string.Format("写入文件出错：消息={0},堆栈={1}", ex.Message, ex.StackTrace));
+            }
+        }
+
         private void updateLogBox(string line) {
             List<string> tmp = this.textBox1.Lines.ToList();
             tmp.Add(line);
@@ -523,12 +568,14 @@ namespace LetMeRaid
             this.tickTimer.Enabled = true;
             this.preventSystemSleep(true);
             appendLog("启用服务");
+            this.appendDebugLog("service start");
         }
         private void stopService() {
             this.toggleUI(false);
             this.tickTimer.Enabled = false;
             this.preventSystemSleep(false);
             appendLog("停止服务");
+            this.appendDebugLog("service stop");
         }
         private void button1_Click(object sender, EventArgs e)
         {
