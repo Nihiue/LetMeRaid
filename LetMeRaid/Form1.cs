@@ -259,7 +259,7 @@ namespace LetMeRaid
             Bitmap resizedImage = new Bitmap(bmp, new Size(bmp.Width * resHeight / bmp.Height, resHeight));
 
             ImageCodecInfo jgpEncoder = GetEncoder(ImageFormat.Jpeg);
-            Encoder myEncoder = Encoder.Quality;
+            System.Drawing.Imaging.Encoder myEncoder = System.Drawing.Imaging.Encoder.Quality;
 
             var myEncoderParameters = new EncoderParameters(1);
             var myEncoderParameter = new EncoderParameter(myEncoder, 60L);
