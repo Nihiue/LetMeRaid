@@ -92,7 +92,8 @@ namespace LetMeRaid
                 this.appendLog("已配置远程日志");
             }
             
-            this.remoteReportImage = readConfigFile("RemoteReportImage", "0") == "1";            
+            this.remoteReportImage = readConfigFile("RemoteReportImage", "0") == "1";
+            this.enableDebugLog = readConfigFile("DebugLog", "0") == "1";
         }
         private void initDebugLog() {
             if (!this.enableDebugLog) {
@@ -133,7 +134,7 @@ namespace LetMeRaid
             double r = (double)w / h;
             return r > 1.772;
         }
-        public Bitmap getScreenshot(ref RECT cRect, ref RECT wRect)
+        public static Bitmap getScreenshot(ref RECT cRect, ref RECT wRect)
         {            
             Size capSize = new Size(cRect.Right - cRect.Left, cRect.Bottom - cRect.Top);
             Point capStart = getClientStart(ref cRect, ref wRect);
@@ -168,6 +169,8 @@ namespace LetMeRaid
         }
 
         public void onTick(object source, System.Timers.ElapsedEventArgs e) {
+
+            this.appendDebugLog("on tick");
 
             if (this.tickTimer.Interval != 10 * 1000) {
                 this.tickTimer.Interval = 10 * 1000;
