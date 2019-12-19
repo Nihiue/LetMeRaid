@@ -11,6 +11,7 @@ using System.Net;
 using System.Collections.Specialized;
 using System.IO;
 using System.Net.Http;
+using System.Text;
 
 namespace LetMeRaid
 {
@@ -21,7 +22,7 @@ namespace LetMeRaid
         private bool scheduleMode = false;
         private bool autoStartService = false;
         private bool focusFirstBNGame = false;
-        private bool enableDebugLog = true;
+        private bool enableDebugLog = false;
 
         // Remote Report
         private string remoteReportToken = "";
@@ -35,7 +36,7 @@ namespace LetMeRaid
         delegate void deleAppendLog(string text);
         [DllImport("kernel32.dll")]
         static extern uint SetThreadExecutionState(uint esFlags);
-        [DllImport("user32.dll")]
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         private static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
         [DllImport("user32.dll")]
         private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
