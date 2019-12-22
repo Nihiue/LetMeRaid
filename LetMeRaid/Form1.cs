@@ -73,8 +73,10 @@ namespace LetMeRaid
         [DllImport("kernel32")]
         private static extern int GetPrivateProfileString(string lpAppName, string lpKeyName, string lpDefault, System.Text.StringBuilder lpReturnedString, int nSize, string lpFileName);
 
+        /*
         [DllImport("user32")]
         public static extern int GetSystemMetrics(int nIndex);
+        */
         [DllImport("user32", EntryPoint = "HideCaret")]
         private static extern bool HideCaret(IntPtr hWnd);
 
@@ -91,9 +93,13 @@ namespace LetMeRaid
                 this.remoteReportToken = t;
                 this.appendLog("已配置远程日志");
             }
-            
+
             this.remoteReportImage = readConfigFile("RemoteReportImage", "0") == "1";
             this.enableDebugLog = readConfigFile("DebugLog", "0") == "1";
+
+            if (this.enableDebugLog) {
+                this.appendLog('启用Debug日志输出');
+            }
         }
         private void initDebugLog() {
             if (!this.enableDebugLog) {
@@ -109,10 +115,10 @@ namespace LetMeRaid
             if (wRect.Bottom - wRect.Top != cRect.Bottom)
             {
                 // 非全屏
-                int titleHeight = GetSystemMetrics(4);
+                // int titleHeight = GetSystemMetrics(4);
                 int borderWidth = (wRect.Right - wRect.Left - cRect.Right) / 2;
                 start.X = start.X + borderWidth;
-                start.Y = start.Y + titleHeight + borderWidth;
+                start.Y = wRect.Bottom - cRect.Bottom - borderWidth;
             }
             return start;
         }
@@ -135,7 +141,7 @@ namespace LetMeRaid
             return r > 1.772;
         }
         public static Bitmap getScreenshot(ref RECT cRect, ref RECT wRect)
-        {            
+        {
             Size capSize = new Size(cRect.Right - cRect.Left, cRect.Bottom - cRect.Top);
             Point capStart = getClientStart(ref cRect, ref wRect);
             Bitmap baseImage = new Bitmap(capSize.Width, capSize.Height);
@@ -150,7 +156,7 @@ namespace LetMeRaid
             InitializeComponent();
 
             if (Array.IndexOf(args, "--auto-start") >= 0) {
-                this.autoStartService = true;                
+                this.autoStartService = true;
             }
         }
 
@@ -170,12 +176,10 @@ namespace LetMeRaid
 
         public void onTick(object source, System.Timers.ElapsedEventArgs e) {
 
-            this.appendDebugLog("on tick");
-
             if (this.tickTimer.Interval != 10 * 1000) {
                 this.tickTimer.Interval = 10 * 1000;
             }
-            
+
             if (this.scheduleMode) {
                 DateTime dt = DateTime.Now;
                 bool inTimeRange = dt.TimeOfDay.TotalMinutes >= (double)(this.numericUpDown1.Value * 60 + this.numericUpDown2.Value);
@@ -226,24 +230,25 @@ namespace LetMeRaid
                     this.writeCapImage(this.lastScreenshot);
                 }
             }
-        
+
             long ts = (new DateTimeOffset(DateTime.UtcNow)).ToUnixTimeSeconds();
             if (this.remoteReportToken.Contains("@") && ts - this.lastRemoteReportTime > 298) {
                 this.lastRemoteReportTime = ts;
                 this.sendReportAsync(String.Join("\n", this.textBox1.Lines), this.lastScreenshot);
-            } else if (this.lastScreenshot != null) {
-                this.lastScreenshot.Dispose();
             }
-            this.lastScreenshot = null;
 
+            if (this.lastScreenshot != null) {
+                this.lastScreenshot.Dispose();
+                this.lastScreenshot = null;
+            }
         }
 
         private void writeCapImage(Bitmap bmp) {
-
             string filePath = System.IO.Path.Combine(Application.StartupPath, "lmr_cap.jpg");
             var stream = new FileStream(filePath, FileMode.Create);
             bmp.Save(stream, ImageFormat.Jpeg);
         }
+
         private ImageCodecInfo GetEncoder(ImageFormat format)
         {
             ImageCodecInfo[] codecs = ImageCodecInfo.GetImageDecoders();
@@ -275,7 +280,8 @@ namespace LetMeRaid
             byte[] imageBytes = stream.ToArray();
             return imageBytes;
         }
-        private async void sendReportAsync(string log, Bitmap bmp) {           
+
+        private async void sendReportAsync(string log, Bitmap bmp) {
             try
             {
                 HttpClient httpClient = new HttpClient();
@@ -284,20 +290,15 @@ namespace LetMeRaid
                 form.Add(new StringContent(log), "log");
                 if (this.remoteReportImage && bmp != null)
                 {
-                    byte[] file_bytes = this.encodeImage(bmp);                    
+                    byte[] file_bytes = this.encodeImage(bmp);
                     form.Add(new ByteArrayContent(file_bytes, 0, file_bytes.Length), "image", "screenshot.jpg");
-                }               
+                }
                 await httpClient.PostAsync("http://ap.nihi.me/lmr_api/report", form);
             }
             catch (Exception e)
             {
+                this.appendDebugLog('remote report failed');
                 Console.WriteLine(e);
-            }
-            finally {                
-                if (bmp != null)
-                {
-                    bmp.Dispose();
-                }               
             }
         }
 
@@ -375,8 +376,10 @@ namespace LetMeRaid
                 this.appendDebugLog(string.Format("cRect={0} wRect={1}", cRect, wRect));
 
                 if (!isRatioSupported(cRect.Right, cRect.Bottom)) {
-                   this.appendLog("自动重设窗口大小");
-                   MoveWindow(findPtr, 50, 50, 1280 + wRect.Right - wRect.Left - cRect.Right, 720 + wRect.Bottom - wRect.Top - cRect.Bottom, true);
+                   int newWidth = 1280 + wRect.Right - wRect.Left - cRect.Right;
+                   int newHeight = 720 + wRect.Bottom - wRect.Top - cRect.Bottom;
+                   this.appendLog("重设窗口大小 {0}*{1}", newWidth, newHeight);
+                   MoveWindow(findPtr, 50, 50, newWidth, newHeight, true);
                    return 0;
                 }
 
