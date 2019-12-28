@@ -98,7 +98,7 @@ namespace LetMeRaid
             this.enableDebugLog = readConfigFile("DebugLog", "0") == "1";
 
             if (this.enableDebugLog) {
-                this.appendLog('启用Debug日志输出');
+                this.appendLog("启用Debug日志输出");
             }
         }
         private void initDebugLog() {
@@ -297,7 +297,7 @@ namespace LetMeRaid
             }
             catch (Exception e)
             {
-                this.appendDebugLog('remote report failed');
+                this.appendDebugLog("remote report failed");
                 Console.WriteLine(e);
             }
         }
@@ -378,7 +378,7 @@ namespace LetMeRaid
                 if (!isRatioSupported(cRect.Right, cRect.Bottom)) {
                    int newWidth = 1280 + wRect.Right - wRect.Left - cRect.Right;
                    int newHeight = 720 + wRect.Bottom - wRect.Top - cRect.Bottom;
-                   this.appendLog("重设窗口大小 {0}*{1}", newWidth, newHeight);
+                   this.appendLog(string.Format("重设窗口大小 {0}*{1}", newWidth, newHeight));
                    MoveWindow(findPtr, 50, 50, newWidth, newHeight, true);
                    return 0;
                 }
