@@ -216,6 +216,11 @@ namespace LetMeRaid
                         this.appendLog("人物选择界面，选择人物");
                         this.enterGame();
                     }
+                    else
+                    {
+                        // 自动奥山
+                        this.autoAS();
+                    }
                 }
                 else
                 {
@@ -406,6 +411,53 @@ namespace LetMeRaid
                 this.appendLog("未找到 WOW 窗口");
             }
             return 0;
+        }
+
+        private static Bitmap cropAtRect(Bitmap b, Rectangle r)
+        {
+            Bitmap nb = new Bitmap(r.Width, r.Height);
+            Graphics g = Graphics.FromImage(nb);
+            g.DrawImage(b, -r.X, -r.Y);
+            return nb;
+        }
+
+        private void autoAS() {
+            Bitmap bmp = lastScreenshot;
+            Bitmap nb = cropAtRect(bmp, new Rectangle(0, 70, 300, 150));
+            //string filePath = System.IO.Path.Combine(Application.StartupPath, "test.jpg");
+            //var stream = new FileStream(filePath, FileMode.Create);
+            //nb.Save(stream, ImageFormat.Jpeg);
+            //stream.Close();
+            MemoryStream ms = new MemoryStream();
+            nb.Save(ms, System.Drawing.Imaging.ImageFormat.Bmp);
+            byte[] bytes = ms.GetBuffer();
+            ms.Close();
+            var engine = new Tesseract.TesseractEngine(@"./tessdata", "eng", Tesseract.EngineMode.Default);
+            var page = engine.Process(Tesseract.Pix.LoadFromMemory(bytes));
+            var text = page.GetText().Trim();
+            Console.WriteLine(text);
+            var lines = text.Split('\n');
+            var status = lines[0];
+            var zone = lines[1].Split(':')[0];
+            var locX = lines[1].Split(':')[1].Split(',')[0];
+            var locY = lines[1].Split(':')[1].Split(',')[1];
+            Console.WriteLine("{0}, {1}, {2}, {3}", status, zone, locX, locY);
+
+            if (status == "NONE")
+            {
+                SendKeys.SendWait("0");
+                System.Threading.Thread.Sleep(1000);
+                SendKeys.SendWait("j");
+                System.Threading.Thread.Sleep(1000);
+                SendKeys.SendWait("0");
+                System.Threading.Thread.Sleep(1000);
+                SendKeys.SendWait("0");
+            } else if (status == "CONFIRM")
+            {
+                System.Threading.Thread.Sleep(1000);
+                SendKeys.SendWait("9");
+            }
+            System.Environment.Exit(0);
         }
 
         private void killWow() {
