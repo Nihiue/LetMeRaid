@@ -29,6 +29,8 @@ namespace LetMeRaid
         private bool remoteReportImage = false;
         private long lastRemoteReportTime = 0;
         private Bitmap lastScreenshot = null;
+        private long asIterCnt = 0;
+        private bool asJustJoin = true;
 
         private FileStream debugFileStream;
 
@@ -422,12 +424,15 @@ namespace LetMeRaid
         }
 
         private void autoAS() {
+            var input = new WindowsInput.InputSimulator();
+            input.Keyboard.KeyUp(WindowsInput.Native.VirtualKeyCode.VK_W);
+
             Bitmap bmp = lastScreenshot;
-            Bitmap nb = cropAtRect(bmp, new Rectangle(0, 70, 300, 150));
-            //string filePath = System.IO.Path.Combine(Application.StartupPath, "test.jpg");
-            //var stream = new FileStream(filePath, FileMode.Create);
-            //nb.Save(stream, ImageFormat.Jpeg);
-            //stream.Close();
+            Bitmap nb = cropAtRect(bmp, new Rectangle(20, 70, 400, 150));
+            string filePath = System.IO.Path.Combine(Application.StartupPath, "test.jpg");
+            var stream = new FileStream(filePath, FileMode.Create);
+            nb.Save(stream, ImageFormat.Jpeg);
+            stream.Close();
             MemoryStream ms = new MemoryStream();
             nb.Save(ms, System.Drawing.Imaging.ImageFormat.Bmp);
             byte[] bytes = ms.GetBuffer();
@@ -436,28 +441,110 @@ namespace LetMeRaid
             var page = engine.Process(Tesseract.Pix.LoadFromMemory(bytes));
             var text = page.GetText().Trim();
             Console.WriteLine(text);
-            var lines = text.Split('\n');
-            var status = lines[0];
-            var zone = lines[1].Split(':')[0];
-            var locX = lines[1].Split(':')[1].Split(',')[0];
-            var locY = lines[1].Split(':')[1].Split(',')[1];
-            Console.WriteLine("{0}, {1}, {2}, {3}", status, zone, locX, locY);
-
+            var status = "QUEUED";
+            var aliveStatus = "ALIVE";
+            try
+            {
+                var lines = text.Split('\n');
+                status = lines[0].Split(':')[1].Trim();
+                aliveStatus = lines[1].Split(':')[1].Trim();
+            } catch { }
+            
+            // var zone = lines[1].Split(':')[0];
+            //var locX = lines[1].Split(':')[1].Split(',')[0];
+            //var locY = lines[1].Split(':')[1].Split(',')[1];
+            //Console.WriteLine("{0}, {1}, {2}, {3}", status, zone, locX, locY);
+            Console.WriteLine(status);
+            Console.WriteLine(aliveStatus);
             if (status == "NONE")
             {
                 SendKeys.SendWait("0");
-                System.Threading.Thread.Sleep(1000);
+                Thread.Sleep(1000);
                 SendKeys.SendWait("j");
-                System.Threading.Thread.Sleep(1000);
+                Thread.Sleep(1000);
                 SendKeys.SendWait("0");
-                System.Threading.Thread.Sleep(1000);
+                Thread.Sleep(1000);
                 SendKeys.SendWait("0");
-            } else if (status == "CONFIRM")
+            } else if (status == "QUEUED")
             {
-                System.Threading.Thread.Sleep(1000);
+                this.asIterCnt = 0;
+                this.asJustJoin = true;
+                SendKeys.SendWait(" ");
+            } 
+            else if (status == "CONFIRM" || status == "CONFIRN")
+            {
+                Thread.Sleep(1000);
                 SendKeys.SendWait("9");
             }
-            System.Environment.Exit(0);
+            else if (status == "ACTIVE")
+            {
+                if (aliveStatus == "DEAD")
+                {
+                    this.asIterCnt = 0;
+                    this.asJustJoin = false;
+                    input.Keyboard.KeyUp(WindowsInput.Native.VirtualKeyCode.VK_W);
+                    SendKeys.SendWait("9");
+                } else if (aliveStatus == "ALIVE")
+                {
+                    this.asIterCnt += 1;
+                    Random rnd = new Random();
+                    var badgeInterval = 13;
+                    var normalActionInterval = asJustJoin ? 12 : 5;
+
+                    if (asIterCnt > normalActionInterval && asIterCnt%badgeInterval != 0 && asIterCnt%badgeInterval != 1)
+                    {
+                        this.asJustJoin = false;
+                        SendKeys.SendWait("{TAB}");
+                        var castSpell = rnd.Next(0, 3);
+                        if (castSpell == 0)
+                        {
+                            SendKeys.SendWait("1");
+                            Thread.Sleep(2000);
+                        } else if (castSpell == 1)
+                        {
+                            SendKeys.SendWait("e");
+                            Thread.Sleep(2000);
+                        }
+
+                        var keyCode = WindowsInput.Native.VirtualKeyCode.LEFT;
+                        if (rnd.Next(0, 2) == 1)
+                        {
+                            keyCode = WindowsInput.Native.VirtualKeyCode.RIGHT;
+                        }
+
+                        input.Keyboard.KeyDown(keyCode);
+                        Thread.Sleep(rnd.Next(0, 1000));
+                        input.Keyboard.KeyUp(keyCode);
+                    } else if (asIterCnt == 1)
+                    {
+                        var keyCode = WindowsInput.Native.VirtualKeyCode.LEFT;
+
+                        input.Keyboard.KeyDown(keyCode);
+                        Thread.Sleep(100);
+                        input.Keyboard.KeyUp(keyCode);
+                    }  else if (asIterCnt == 2)
+                    {
+                        var keyCode = WindowsInput.Native.VirtualKeyCode.RIGHT;
+
+                        input.Keyboard.KeyDown(keyCode);
+                        Thread.Sleep(60);
+                        input.Keyboard.KeyUp(keyCode);
+                    } else if (asIterCnt%badgeInterval == 0)
+                    {
+                        // use badge
+                        SendKeys.SendWait("8");
+                    }
+
+                    if (asIterCnt == 1 || asIterCnt%badgeInterval != 0 && asIterCnt%badgeInterval != 1)
+                    {
+                        input.Keyboard.KeyDown(WindowsInput.Native.VirtualKeyCode.VK_W);
+                        Thread.Sleep(rnd.Next(500, 2500));
+                        SendKeys.SendWait(" ");
+                    }
+                }
+            }
+
+            //System.Environment.Exit(0);
         }
 
         private void killWow() {
