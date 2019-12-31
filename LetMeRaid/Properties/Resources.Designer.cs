@@ -63,16 +63,6 @@ namespace LetMeRaid.Properties {
         /// <summary>
         ///   查找 System.Byte[] 类型的本地化资源。
         /// </summary>
-        internal static byte[] chi_sim {
-            get {
-                object obj = ResourceManager.GetObject("chi_sim", resourceCulture);
-                return ((byte[])(obj));
-            }
-        }
-        
-        /// <summary>
-        ///   查找 System.Byte[] 类型的本地化资源。
-        /// </summary>
         internal static byte[] eng {
             get {
                 object obj = ResourceManager.GetObject("eng", resourceCulture);

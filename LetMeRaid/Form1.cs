@@ -29,8 +29,12 @@ namespace LetMeRaid
         private bool remoteReportImage = false;
         private long lastRemoteReportTime = 0;
         private Bitmap lastScreenshot = null;
-        private long asIterCnt = 0;
-        private bool asJustJoin = true;
+
+        private long asCounter = 0;
+        private bool asFirstJoin = true;
+        private int asHoldActionCnt = 0;
+        private DateTime asStartTime = DateTime.Now;
+        private bool castSpell = false;
 
         private FileStream debugFileStream;
 
@@ -178,8 +182,8 @@ namespace LetMeRaid
 
         public void onTick(object source, System.Timers.ElapsedEventArgs e) {
 
-            if (this.tickTimer.Interval != 10 * 1000) {
-                this.tickTimer.Interval = 10 * 1000;
+            if (this.tickTimer.Interval != 2 * 1000) {
+                this.tickTimer.Interval = 2 * 1000;
             }
 
             if (this.scheduleMode) {
@@ -423,12 +427,23 @@ namespace LetMeRaid
             return nb;
         }
 
-        private void autoAS() {
-            var input = new WindowsInput.InputSimulator();
-            input.Keyboard.KeyUp(WindowsInput.Native.VirtualKeyCode.VK_W);
+        private void resetASVars()
+        {
+            this.asCounter = 0;
+            this.asHoldActionCnt = 0;
+        }
 
+        private void autoAS() {
+            // 0: 目标+排队奥山宏
+            // 9: 确认加入宏
+            // 8: 徽章
+            // 7: afk宏
+
+            // 截图进行OCR
             Bitmap bmp = lastScreenshot;
-            Bitmap nb = cropAtRect(bmp, new Rectangle(20, 70, 400, 150));
+            double ratio = bmp.Width / 3840.0;
+            Console.WriteLine(ratio);
+            Bitmap nb = cropAtRect(bmp, new Rectangle((int)(20 * ratio), (int)(60 * ratio), (int)(800 * ratio), (int)(85 * ratio)));
             string filePath = System.IO.Path.Combine(Application.StartupPath, "test.jpg");
             var stream = new FileStream(filePath, FileMode.Create);
             nb.Save(stream, ImageFormat.Jpeg);
@@ -441,104 +456,198 @@ namespace LetMeRaid
             var page = engine.Process(Tesseract.Pix.LoadFromMemory(bytes));
             var text = page.GetText().Trim();
             Console.WriteLine(text);
+
+            // 获取战场状态与人物状态
             var status = "QUEUED";
             var aliveStatus = "ALIVE";
             try
             {
-                var lines = text.Split('\n');
+                var lines = text.Split(',');
                 status = lines[0].Split(':')[1].Trim();
                 aliveStatus = lines[1].Split(':')[1].Trim();
-            } catch { }
-            
+            } catch {
+                appendLog(string.Format("识别失败, 原始数据：\n{0}", text));
+            }
+
             // var zone = lines[1].Split(':')[0];
             //var locX = lines[1].Split(':')[1].Split(',')[0];
             //var locY = lines[1].Split(':')[1].Split(',')[1];
             //Console.WriteLine("{0}, {1}, {2}, {3}", status, zone, locX, locY);
             Console.WriteLine(status);
             Console.WriteLine(aliveStatus);
+            appendLog(string.Format("status: {0}, aliveStatus:{1}", status, aliveStatus));
+
+            var input = new WindowsInput.InputSimulator();
+            if (!(status == "ACTIVE" && aliveStatus == "ALIVE" && asHoldActionCnt > 0))
+            {
+                // 除了持续型操作，都释放前进按键
+                // input.Keyboard.KeyUp(WindowsInput.Native.VirtualKeyCode.VK_W);
+            }
+
+            // 根据不同战场状态进行操作
             if (status == "NONE")
             {
+                input.Keyboard.KeyUp(WindowsInput.Native.VirtualKeyCode.VK_W);
+                // 在战场外未排队，进行自动排队，初始化各标记值
+                resetASVars();
+                asFirstJoin = true;
+
                 SendKeys.SendWait("0");
-                Thread.Sleep(1000);
+                Thread.Sleep(300);
                 SendKeys.SendWait("j");
-                Thread.Sleep(1000);
+                Thread.Sleep(300);
                 SendKeys.SendWait("0");
-                Thread.Sleep(1000);
+                Thread.Sleep(300);
                 SendKeys.SendWait("0");
             } else if (status == "QUEUED")
             {
-                this.asIterCnt = 0;
-                this.asJustJoin = true;
-                SendKeys.SendWait(" ");
-            } 
+                // 排队中，跳跃
+                if (DateTime.Now.Second % 9 == 0)
+                {
+                    SendKeys.SendWait(" ");
+                }
+            }
             else if (status == "CONFIRM" || status == "CONFIRN")
             {
+                // 确认进入战场
                 Thread.Sleep(1000);
                 SendKeys.SendWait("9");
+                asStartTime = DateTime.Now;
             }
             else if (status == "ACTIVE")
             {
-                if (aliveStatus == "DEAD")
+                // 战场内自动操作
+                // 超过一小时退出
+                var now = DateTime.Now;
+                var duration = now - asStartTime;
+                if (duration.TotalHours >= 1)
                 {
-                    this.asIterCnt = 0;
-                    this.asJustJoin = false;
                     input.Keyboard.KeyUp(WindowsInput.Native.VirtualKeyCode.VK_W);
-                    SendKeys.SendWait("9");
+                    SendKeys.SendWait("7");
+                    return;
+                }
+
+                // 判断人物当前状态
+                if (aliveStatus == "DEAD" || aliveStatus == "GHOST")
+                {
+                    // 死亡或者幽灵，初始化标记值，停止行动等待复活
+                    input.Keyboard.KeyUp(WindowsInput.Native.VirtualKeyCode.VK_W);
+
+                    resetASVars();
+                    asFirstJoin = false;
+
+                    if (aliveStatus == "DEAD")
+                    {
+                        // 自动释放灵魂
+                        SendKeys.SendWait("9");
+                    }
                 } else if (aliveStatus == "ALIVE")
                 {
-                    this.asIterCnt += 1;
-                    Random rnd = new Random();
-                    var badgeInterval = 13;
-                    var normalActionInterval = asJustJoin ? 12 : 5;
+                    // 正常状态，执行自动行动，增加计数器
+                    asCounter += 1;
 
-                    if (asIterCnt > normalActionInterval && asIterCnt%badgeInterval != 0 && asIterCnt%badgeInterval != 1)
+                    // 处理持续多个 Tick 的操作
+                    if (asHoldActionCnt > 0)
                     {
-                        this.asJustJoin = false;
+                        asHoldActionCnt -= 1;
+                        if (!castSpell)
+                        {
+                            SendKeys.SendWait(" ");
+                        }
+                        return;
+                    }
+                   
+                    // 使用徽章的轮次
+                    var badgeInterval = 70;
+
+                    // 开始正常行动的轮次
+                    // 刚加入时需要等待战场开门
+                    var normalActionInterval = asFirstJoin ? 65 : 20;
+
+                    Random rnd = new Random();
+
+                    if (asCounter > normalActionInterval)
+                    {
+                        if (asFirstJoin)
+                        {
+                            // 在往前走30s
+                            asFirstJoin = false;
+                            // input.Keyboard.KeyDown(WindowsInput.Native.VirtualKeyCode.RIGHT);
+                            // Thread.Sleep(30);
+                            // input.Keyboard.KeyUp(WindowsInput.Native.VirtualKeyCode.RIGHT);
+                            input.Keyboard.KeyDown(WindowsInput.Native.VirtualKeyCode.VK_W);
+                            asHoldActionCnt = 15;
+                            return;
+                        }
+                        // 正常行动
+                        // 判断是否要使用徽章
+                        this.castSpell = false;
+                        if (asCounter % badgeInterval == 0)
+                        {
+                            // Thread.Sleep(1000);
+                            // SendKeys.SendWait("8");
+                            // 徽章持续10s，所以下个tick不动
+                            // asHoldActionCnt = 1;
+                            // return;
+                        }
+
+                        // 随机攻击
                         SendKeys.SendWait("{TAB}");
                         var castSpell = rnd.Next(0, 3);
                         if (castSpell == 0)
                         {
-                            SendKeys.SendWait("1");
-                            Thread.Sleep(2000);
+                            SendKeys.SendWait("f");
                         } else if (castSpell == 1)
                         {
                             SendKeys.SendWait("e");
-                            Thread.Sleep(2000);
                         }
 
+                        // 随机转头
                         var keyCode = WindowsInput.Native.VirtualKeyCode.LEFT;
                         if (rnd.Next(0, 2) == 1)
                         {
                             keyCode = WindowsInput.Native.VirtualKeyCode.RIGHT;
                         }
-
                         input.Keyboard.KeyDown(keyCode);
-                        Thread.Sleep(rnd.Next(0, 1000));
+                        Thread.Sleep(rnd.Next(0, 700));
                         input.Keyboard.KeyUp(keyCode);
-                    } else if (asIterCnt == 1)
+
+                    }
+                    else if (asCounter == 1)
                     {
+                        // 前两个tick，精确处理山洞路线
                         var keyCode = WindowsInput.Native.VirtualKeyCode.LEFT;
 
                         input.Keyboard.KeyDown(keyCode);
-                        Thread.Sleep(100);
+                        Thread.Sleep(105);
                         input.Keyboard.KeyUp(keyCode);
-                    }  else if (asIterCnt == 2)
+                        input.Keyboard.KeyDown(WindowsInput.Native.VirtualKeyCode.VK_W);
+                        asHoldActionCnt = 2;
+                        return;
+
+                    }
+                    else if (asCounter == 4)
                     {
                         var keyCode = WindowsInput.Native.VirtualKeyCode.RIGHT;
 
                         input.Keyboard.KeyDown(keyCode);
-                        Thread.Sleep(60);
+                        Thread.Sleep(65);
                         input.Keyboard.KeyUp(keyCode);
-                    } else if (asIterCnt%badgeInterval == 0)
+                        input.Keyboard.KeyDown(WindowsInput.Native.VirtualKeyCode.VK_W);
+                        asHoldActionCnt = 3;
+                        return;
+                    }
+                    else if (asFirstJoin)
                     {
-                        // use badge
-                        SendKeys.SendWait("8");
+                        // 出门前停止行动
+                        input.Keyboard.KeyUp(WindowsInput.Native.VirtualKeyCode.VK_W);
+                        return;
                     }
 
-                    if (asIterCnt == 1 || asIterCnt%badgeInterval != 0 && asIterCnt%badgeInterval != 1)
+                    // 自动前进，夹杂跳跃
+                    input.Keyboard.KeyDown(WindowsInput.Native.VirtualKeyCode.VK_W);
+                    if (asCounter % 3 == 0)
                     {
-                        input.Keyboard.KeyDown(WindowsInput.Native.VirtualKeyCode.VK_W);
-                        Thread.Sleep(rnd.Next(500, 2500));
                         SendKeys.SendWait(" ");
                     }
                 }
