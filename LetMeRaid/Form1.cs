@@ -22,12 +22,14 @@ namespace LetMeRaid
         private bool scheduleMode = false;
         private bool autoStartService = false;
         private bool focusFirstBNGame = false;
+        private bool reconnectBN = true;
         private bool enableDebugLog = false;
 
         // Remote Report
         private string remoteReportToken = "";
         private bool remoteReportImage = false;
         private long lastRemoteReportTime = 0;
+        private int remoteReportInterval = 300;
         private Bitmap lastScreenshot = null;
 
         private long asCounter = 0;
@@ -86,6 +88,11 @@ namespace LetMeRaid
         [DllImport("user32", EntryPoint = "HideCaret")]
         private static extern bool HideCaret(IntPtr hWnd);
 
+        private static float getUIScaleFactor(IntPtr ptr) {
+            Graphics graphics = Graphics.FromHwnd(ptr);
+            return graphics.DpiX / 96;
+        }
+
         private string readConfigFile(string key, string def) {
             string filePath = System.IO.Path.Combine(Application.StartupPath, "config.ini");
             System.Text.StringBuilder sb = new System.Text.StringBuilder(1024);
@@ -94,6 +101,8 @@ namespace LetMeRaid
         }
         private void loadConfig() {
             this.focusFirstBNGame = readConfigFile("FocusFirstBattleNetGame", "0") == "1";
+            this.reconnectBN = readConfigFile("ReconnectBN", "1") != "0";
+
             string t = readConfigFile("RemoteReportToken", "");
             if (t.Contains("@")) {
                 this.remoteReportToken = t;
@@ -101,7 +110,8 @@ namespace LetMeRaid
             }
 
             this.remoteReportImage = readConfigFile("RemoteReportImage", "0") == "1";
-            this.enableDebugLog = readConfigFile("DebugLog", "0") == "1";
+            this.remoteReportInterval = Int32.Parse(readConfigFile("RemoteReportInterval", "300"));
+            this.enableDebugLog = readConfigFile("DebugLog", "0") == "1";     
 
             if (this.enableDebugLog) {
                 this.appendLog("启用Debug日志输出");
@@ -243,7 +253,7 @@ namespace LetMeRaid
             }
 
             long ts = (new DateTimeOffset(DateTime.UtcNow)).ToUnixTimeSeconds();
-            if (this.remoteReportToken.Contains("@") && ts - this.lastRemoteReportTime > 298) {
+            if (this.remoteReportToken.Contains("@") && ts - this.lastRemoteReportTime > this.remoteReportInterval - 5) {
                 this.lastRemoteReportTime = ts;
                 this.sendReportAsync(String.Join("\n", this.textBox1.Lines), this.lastScreenshot);
             }
@@ -298,6 +308,7 @@ namespace LetMeRaid
                 HttpClient httpClient = new HttpClient();
                 MultipartFormDataContent form = new MultipartFormDataContent();
                 form.Add(new StringContent(this.remoteReportToken), "token");
+                form.Add(new StringContent(this.remoteReportInterval.ToString()), "interval");
                 form.Add(new StringContent(log), "log");
                 if (this.remoteReportImage && bmp != null)
                 {
@@ -712,8 +723,15 @@ namespace LetMeRaid
         private bool ensureBNOnline() {
             IntPtr findPtr = this.activateWindow("Qt5QWindowIcon", "暴雪战网错误");
             if (findPtr.ToInt32() != 0) {
-                this.appendLog("战网离线，尝试重连");
-                SendKeys.SendWait("{ENTER}");
+                if (this.reconnectBN)
+                {
+                    this.appendLog("战网离线，尝试重连");
+                    SendKeys.SendWait("{ENTER}");
+                }
+                else {
+                    this.appendLog("战网离线");
+                }
+                
                 return false;
             }
             return true;
@@ -728,9 +746,10 @@ namespace LetMeRaid
                 }
 
                 if (this.focusFirstBNGame) {
+                    float factor = getUIScaleFactor(findPtr);
                     MoveWindow(findPtr, 50, 50, 1380, 850, true);
                     Thread.Sleep(1000);
-                    this.mouseClick(50 + 135, 50 + 155);
+                    this.mouseClick(50 +(int)(108 * factor), 50 + (int)(124 * factor));
                     Thread.Sleep(1000);
                 }
                 // this.mouseClick(50 + 480, 50 + 750);
