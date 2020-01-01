@@ -24,6 +24,7 @@ namespace LetMeRaid
         private bool focusFirstBNGame = false;
         private bool reconnectBN = true;
         private bool enableDebugLog = false;
+        private bool doubleWASize = false;
 
         // Remote Report
         private string remoteReportToken = "";
@@ -111,8 +112,8 @@ namespace LetMeRaid
 
             this.remoteReportImage = readConfigFile("RemoteReportImage", "0") == "1";
             this.remoteReportInterval = Int32.Parse(readConfigFile("RemoteReportInterval", "300"));
-            this.enableDebugLog = readConfigFile("DebugLog", "0") == "1";     
-
+            this.enableDebugLog = readConfigFile("DebugLog", "0") == "1";
+            this.doubleWASize = readConfigFile("DoubleWASize", "0") == "1";
             if (this.enableDebugLog) {
                 this.appendLog("启用Debug日志输出");
             }
@@ -453,20 +454,26 @@ namespace LetMeRaid
             // 截图进行OCR
             Bitmap bmp = lastScreenshot;
             double ratio = bmp.Width / 3840.0;
+            if (this.doubleWASize) {
+                ratio = ratio * 2;
+            }
             Console.WriteLine(ratio);
             Bitmap nb = cropAtRect(bmp, new Rectangle((int)(20 * ratio), (int)(60 * ratio), (int)(800 * ratio), (int)(85 * ratio)));
-            string filePath = System.IO.Path.Combine(Application.StartupPath, "test.jpg");
-            var stream = new FileStream(filePath, FileMode.Create);
-            nb.Save(stream, ImageFormat.Jpeg);
-            stream.Close();
-            MemoryStream ms = new MemoryStream();
-            nb.Save(ms, System.Drawing.Imaging.ImageFormat.Bmp);
-            byte[] bytes = ms.GetBuffer();
-            ms.Close();
+
+            if (this.enableDebugLog) {
+                string filePath = System.IO.Path.Combine(Application.StartupPath, "ocr.jpg");
+                var stream = new FileStream(filePath, FileMode.Create);
+                nb.Save(stream, ImageFormat.Jpeg);
+                stream.Close();
+            }
+           
+            // MemoryStream ms = new MemoryStream();
+            // nb.Save(ms, System.Drawing.Imaging.ImageFormat.Bmp);
+            // byte[] bytes = ms.GetBuffer();
+            // ms.Close();
             var engine = new Tesseract.TesseractEngine(@"./tessdata", "eng", Tesseract.EngineMode.Default);
-            var page = engine.Process(Tesseract.Pix.LoadFromMemory(bytes));
-            var text = page.GetText().Trim();
-            Console.WriteLine(text);
+            var page = engine.Process(Tesseract.PixConverter.ToPix(nb));
+            var text = page.GetText().Trim();           
 
             // 获取战场状态与人物状态
             var status = "QUEUED";
@@ -480,13 +487,9 @@ namespace LetMeRaid
                 appendLog(string.Format("识别失败, 原始数据：\n{0}", text));
             }
 
-            // var zone = lines[1].Split(':')[0];
-            //var locX = lines[1].Split(':')[1].Split(',')[0];
-            //var locY = lines[1].Split(':')[1].Split(',')[1];
-            //Console.WriteLine("{0}, {1}, {2}, {3}", status, zone, locX, locY);
-            Console.WriteLine(status);
-            Console.WriteLine(aliveStatus);
-            appendLog(string.Format("status: {0}, aliveStatus:{1}", status, aliveStatus));
+            if (this.enableDebugLog) {
+                this.appendDebugLog(string.Format("OCR status: {0}, aliveStatus:{1}", status, aliveStatus));
+            }
 
             var input = new WindowsInput.InputSimulator();
             if (!(status == "ACTIVE" && aliveStatus == "ALIVE" && asHoldActionCnt > 0))
