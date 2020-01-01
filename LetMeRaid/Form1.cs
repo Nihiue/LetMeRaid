@@ -562,7 +562,7 @@ namespace LetMeRaid
 
                     // 开始正常行动的轮次
                     // 刚加入时需要等待战场开门
-                    var normalActionInterval = asFirstJoin ? 65 : 20;
+                    var normalActionInterval = asFirstJoin ? 60 : 20;
 
                     Random rnd = new Random();
 
@@ -576,7 +576,7 @@ namespace LetMeRaid
                             // Thread.Sleep(30);
                             // input.Keyboard.KeyUp(WindowsInput.Native.VirtualKeyCode.RIGHT);
                             input.Keyboard.KeyDown(WindowsInput.Native.VirtualKeyCode.VK_W);
-                            asHoldActionCnt = 15;
+                            asHoldActionCnt = 25;
                             return;
                         }
                         // 正常行动
