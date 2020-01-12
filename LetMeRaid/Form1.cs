@@ -498,7 +498,8 @@ namespace LetMeRaid
                 }
 
                 if (this.focusFirstBNGame) {
-                    float factor = getUIScaleFactor(findPtr);
+                    // float factor = getUIScaleFactor(findPtr);
+                    int factor = 1;
                     MoveWindow(findPtr, 50, 50, 1380, 850, true);
                     Thread.Sleep(1000);
                     this.mouseClick(50 +(int)(108 * factor), 50 + (int)(124 * factor));
