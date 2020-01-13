@@ -12,6 +12,7 @@ using System.Collections.Specialized;
 using System.IO;
 using System.Net.Http;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace LetMeRaid
 {
@@ -38,6 +39,10 @@ namespace LetMeRaid
         private int asHoldActionCnt = 0;
         private DateTime asStartTime = DateTime.Now;
         private bool castSpell = false;
+
+        // Buff saving
+        private string wowConfigPath = "";
+        private int lastCharacter = 0;
 
         private FileStream debugFileStream;
 
@@ -114,6 +119,12 @@ namespace LetMeRaid
             this.remoteReportInterval = Int32.Parse(readConfigFile("RemoteReportInterval", "300"));
             this.enableDebugLog = readConfigFile("DebugLog", "0") == "1";
             this.doubleWASize = readConfigFile("DoubleWASize", "0") == "1";
+
+            string c = readConfigFile("WowConfigPath", "");
+            if (c != "")
+            {
+                this.wowConfigPath = c;
+            }
             if (this.enableDebugLog) {
                 this.appendLog("启用Debug日志输出");
             }
@@ -193,8 +204,8 @@ namespace LetMeRaid
 
         public void onTick(object source, System.Timers.ElapsedEventArgs e) {
 
-            if (this.tickTimer.Interval != 2 * 1000) {
-                this.tickTimer.Interval = 2 * 1000;
+            if (this.tickTimer.Interval != 10 * 1000) {
+                this.tickTimer.Interval = 10 * 1000;
             }
 
             if (this.scheduleMode) {
@@ -236,7 +247,11 @@ namespace LetMeRaid
                     else
                     {
                         // 自动奥山
-                        this.autoAS();
+                        // this.autoAS();
+                        if (this.wowConfigPath != "")
+                        {
+                            this.saveBuff();
+                        }
                     }
                 }
                 else
@@ -405,6 +420,7 @@ namespace LetMeRaid
                    MoveWindow(findPtr, 50, 50, newWidth, newHeight, true);
                    return 0;
                 }
+                SetCursorPos(wRect.Right, 0);
 
                 Bitmap bmp = getScreenshot(ref cRect, ref wRect);
 
@@ -445,35 +461,78 @@ namespace LetMeRaid
             this.asHoldActionCnt = 0;
         }
 
-        private void autoAS() {
-            // 0: 目标+排队奥山宏
-            // 9: 确认加入宏
-            // 8: 徽章
-            // 7: afk宏
-
+        private string getOCRText()
+        {
             // 截图进行OCR
             Bitmap bmp = lastScreenshot;
             double ratio = bmp.Width / 3840.0;
-            if (this.doubleWASize) {
+            if (this.doubleWASize)
+            {
                 ratio = ratio * 2;
             }
             Console.WriteLine(ratio);
             Bitmap nb = cropAtRect(bmp, new Rectangle((int)(20 * ratio), (int)(60 * ratio), (int)(800 * ratio), (int)(85 * ratio)));
 
-            if (this.enableDebugLog) {
+            if (this.enableDebugLog)
+            {
                 string filePath = System.IO.Path.Combine(Application.StartupPath, "ocr.jpg");
                 var stream = new FileStream(filePath, FileMode.Create);
                 nb.Save(stream, ImageFormat.Jpeg);
                 stream.Close();
             }
-           
+
             // MemoryStream ms = new MemoryStream();
             // nb.Save(ms, System.Drawing.Imaging.ImageFormat.Bmp);
             // byte[] bytes = ms.GetBuffer();
             // ms.Close();
             var engine = new Tesseract.TesseractEngine(@"./tessdata", "eng", Tesseract.EngineMode.Default);
             var page = engine.Process(Tesseract.PixConverter.ToPix(nb));
-            var text = page.GetText().Trim();           
+            return page.GetText().Trim();
+        }
+
+        private void saveBuff()
+        {
+            var text = getOCRText();
+            if (text != "")
+            {
+                appendLog("发现buff，更换角色");
+                killWow();
+                Thread.Sleep(500);
+                // 下线换号
+                string path = this.wowConfigPath;
+                string config = System.IO.File.ReadAllText(path);
+                Regex reg = new Regex("(SET lastCharacterIndex \"(\\d)\")");
+                Match match = reg.Match(config);
+                if (match.Success)
+                {
+                    var index = Convert.ToInt32(match.Groups[2].Value);
+                    if (index == lastCharacter && index > 0)
+                    {
+                        index = 0;
+                    } else
+                    {
+                        lastCharacter = index;
+                        index++;
+                    }
+                    config = reg.Replace(config, "SET lastCharacterIndex \"" + index + "\"");
+                } else
+                {
+                    // 第一个角色有时不会有这条配置
+                    lastCharacter = 0;
+                    config +="SET lastCharacterIndex \"1\"\n";
+                }
+                
+                System.IO.File.WriteAllText(path, config);
+            }
+        }
+
+        private void autoAS() {
+            // 0: 目标+排队奥山宏
+            // 9: 确认加入宏
+            // 8: 徽章
+            // 7: afk宏
+
+            var text = getOCRText();
 
             // 获取战场状态与人物状态
             var status = "QUEUED";
