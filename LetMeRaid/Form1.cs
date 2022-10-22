@@ -324,9 +324,7 @@ namespace LetMeRaid
             return (c1.R - c2.R) * (c1.R - c2.R) + (c1.G - c2.G) * (c1.G - c2.G) + (c1.B - c2.B) * (c1.B - c2.B);
         }
 
-        private int countMatchedPixels(Bitmap bmp, int[,] pts) {
-
-            Color st = Color.FromArgb(123, 9, 6);
+        private int countMatchedPixels(Bitmap bmp, int[,] pts, Color st) {
             int ret = 0;
 
             int width = bmp.Width;
@@ -397,8 +395,8 @@ namespace LetMeRaid
                 Bitmap bmp = getScreenshot(ref cRect, ref wRect);
 
                 int ret = 0;
-                int loginMatched = countMatchedPixels(bmp, loginPts);
-                int chooseMatched = countMatchedPixels(bmp, choosePts);
+                int loginMatched = countMatchedPixels(bmp, loginPts, Color.FromArgb(21, 83, 142));
+                int chooseMatched = countMatchedPixels(bmp, choosePts, Color.FromArgb(123, 9, 6));
 
                 this.appendDebugLog(string.Format("pixel count login={0} choose={1}", loginMatched, chooseMatched));
                 if (loginMatched >= 10)
@@ -460,7 +458,7 @@ namespace LetMeRaid
             if (findPtr.ToInt32() != 0) {
                 ShowWindow(findPtr, 5);
                 SetForegroundWindow(findPtr);
-                Thread.Sleep(300);
+                Thread.Sleep(500);
             }
             return findPtr;
         }
@@ -490,24 +488,24 @@ namespace LetMeRaid
         }
 
         private void launchWow() {
-            IntPtr findPtr = this.activateWindow("Qt5QWindowOwnDCIcon", "暴雪战网");
+            IntPtr findPtr = this.activateWindow("Chrome_WidgetWin_0", "战网");
             if (findPtr.ToInt32() != 0)
             {
                 if (!this.ensureBNOnline()) {
                     return;
                 }
+                Thread.Sleep(1000);
+                float factor = getUIScaleFactor(findPtr);
+                MoveWindow(findPtr, 50, 50, (int)(1000 * factor), (int)(640 * factor), true);
+                Thread.Sleep(1000);
 
                 if (this.focusFirstBNGame) {
-                    // float factor = getUIScaleFactor(findPtr);
-                    int factor = 1;
-                    MoveWindow(findPtr, 50, 50, 1380, 850, true);
-                    Thread.Sleep(1000);
-                    this.mouseClick(50 +(int)(108 * factor), 50 + (int)(124 * factor));
+                    this.mouseClick(50 +(int)(222 * factor), 50 + (int)(121 * factor));
                     Thread.Sleep(1000);
                 }
-                // this.mouseClick(50 + 480, 50 + 750);
-
-                SendKeys.SendWait("{ENTER}");
+                this.mouseClick(50 + (int)(155 * factor), 50 + (int)(512 * factor));
+                Thread.Sleep(2000);
+                // SendKeys.SendWait("{ENTER}");
             }
             else {
                 this.appendLog("未找到 Battle.net 窗口");
